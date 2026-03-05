@@ -1,0 +1,970 @@
+body {
+    background: #f8fafb;
+    color: #22293b;
+    font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    min-height: 100vh;
+}
+
+#main-title-bar {
+    width: 100vw;
+    max-width: 100vw;
+    margin: 0 auto 26px auto;
+    font-size: 1.45em;
+    font-weight: 700;
+    background: #eef6fd;
+    color: #1b305c;
+    letter-spacing: 0.015em;
+    text-align: center;
+    padding: 23px 0 17px 0;
+    border-radius: 0 0 15px 15px;
+    box-shadow: 0 2px 18px #c3deff18;
+}
+
+#session-container {
+    max-width: 900px;
+    width: 96vw;
+    min-width: 320px;
+    margin: 0 auto 40px auto;
+    background: #fff;
+    border-radius: 1.2em;
+    box-shadow: 0 4px 30px rgba(0,0,0,0.12);
+    min-height: 72vh;
+    padding: 2.8vw 3.5vw 2.2vw 3.5vw;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    box-sizing: border-box;
+}
+
+#progress-bar {
+    text-align: right;
+    margin-bottom: 1.5em;
+    color: #6d7897;
+    font-size: 1.04em;
+    font-weight: 540;
+    letter-spacing: 0.01em;
+    opacity: 0.92;
+    height: 26px;
+    line-height: 26px;
+}
+
+#main-content {
+    flex: 1 1 auto;
+    min-height: 25vh;
+    margin-bottom: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+}
+
+/* ----- Modern button styling ----- */
+.button {
+    padding: 0.7em 2.5em;
+    min-width: 120px;
+    font-size: 1.13em;
+    font-family: inherit;
+    border-radius: 9px;
+    border: none;
+    margin: 23px 12px 16px 0;
+    background: linear-gradient(90deg, #1968ff 0%, #1850bb 90%);
+    color: #fff;
+    font-weight: 600;
+    box-shadow: 0 3px 20px #1d34881c, 0 2px 7px #c8d9fc2a;
+    cursor: pointer;
+    transition: background 0.16s, color 0.15s, box-shadow 0.22s, transform 0.12s;
+    outline: none;
+    border: 2.2px solid #1661ee;
+    display: inline-block;
+    letter-spacing: 0.01em;
+    position: relative;
+}
+
+.button:active {
+    background: linear-gradient(90deg, #1451b8 0%, #132e6a 90%);
+    color: #dbe9fa;
+    transform: translateY(1px) scale(0.98);
+    border-color: #1853ab;
+}
+
+.button.primary,
+.button:not(.secondary):not(.danger) {
+    background: linear-gradient(90deg, #1968ff 0%, #1850bb 90%);
+    color: #fff;
+    border: 2.2px solid #1856c9;
+}
+
+.button.secondary {
+    background: #e3ebf7;
+    color: #22345c;
+    border: 2px solid #bed8f6;
+}
+
+.button.danger {
+    background: #ea463c;
+    color: #fff;
+    border: 2px solid #ad1911;
+}
+
+.button:hover, .button:focus-visible {
+    background: linear-gradient(90deg, #1f70ff 0%, #2a4fe1 100%);
+    color: #fff;
+    box-shadow: 0 4px 30px #18408036;
+    border-color: #184080;
+    outline: none;
+}
+
+input[type="number"], input[type="text"], select {
+    font-size: 1.10em;
+    border: 2px solid #c2d1e6;
+    border-radius: 7px;
+    padding: 7px 13px;
+    transition: border-color 0.18s;
+    margin-top: 5px;
+    margin-bottom: 17px;
+    width: 94%;
+    max-width: 100%;
+    background: #f6fafd;
+    color: #26395a;
+    box-sizing: border-box;
+}
+
+input:focus, select:focus {
+    border-color: #167cfa;
+    outline: none;
+}
+
+div.block-title {
+    font-size: 1.21em;
+    margin-bottom: 23px;
+    color: #294c90;
+    font-weight: 700;
+    padding-left: 0.1em;
+    letter-spacing: -.01em;
+}
+
+/* ----- Demographics Form ----- */
+.demographics-container {
+    width: 100%;
+    max-width: 500px;
+    margin: 0 auto;
+}
+
+.form-group {
+    margin-bottom: 1.5em;
+}
+
+.form-group label {
+    display: block;
+    font-weight: 600;
+    color: #294c90;
+    margin-bottom: 0.5em;
+}
+
+/* ----- NASA-TLX Styles ----- */
+.nasatlx-container {
+    width: 100%;
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+.nasatlx-instruction {
+    background: #f0f4f8;
+    padding: 1em;
+    border-radius: 8px;
+    margin-bottom: 2em;
+    font-weight: 500;
+    color: #1f2937;
+}
+
+.nasatlx-question {
+    background: #fafbfc;
+    border: 1px solid #e1e8ed;
+    border-radius: 8px;
+    padding: 1.5em;
+    margin-bottom: 1.5em;
+}
+
+.nasatlx-label {
+    display: block;
+    margin-bottom: 1em;
+    line-height: 1.5;
+}
+
+.scale-note {
+    font-size: 0.9em;
+    color: #6b7280;
+    font-style: italic;
+}
+
+.nasatlx-input {
+    width: 100px;
+    text-align: center;
+    font-size: 1.2em;
+    font-weight: 600;
+}
+
+/* ----- Break Screen ----- */
+.break-container {
+    text-align: center;
+    max-width: 400px;
+    margin: 0 auto;
+}
+
+.break-message {
+    background: #f0f9ff;
+    border: 2px solid #0ea5e9;
+    border-radius: 12px;
+    padding: 2em;
+    margin: 2em 0;
+}
+
+.break-timer {
+    font-size: 3em;
+    font-weight: 700;
+    color: #0ea5e9;
+    margin: 0.5em 0;
+    font-family: 'Inter', monospace;
+}
+
+.break-instruction {
+    color: #0369a1;
+    font-weight: 500;
+}
+
+/* ----- Completion Screen ----- */
+.completion-container {
+    text-align: center;
+    max-width: 400px;
+    margin: 0 auto;
+}
+
+/* ----- Fitts Test Styles ----- */
+#fitts-arena-flexwrap {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    margin: 0 auto 1.1em auto;
+}
+
+#fitts-arena {
+    width: 700px;  /* Match ARENA_W in fitts.js */
+    height: 500px; /* Match ARENA_H in fitts.js */
+    background: #fcfeff;
+    box-shadow: 0 2px 12px #dce3ee;
+    border-radius: 18px;
+    position: relative;
+    overflow: hidden;
+    margin: 0 auto 0.6em auto;
+    touch-action: manipulation;
+    box-sizing: border-box;
+}
+
+.fitts-popup-notification {
+    animation: fitts-pop-slidein 0.19s;
+}
+
+@keyframes fitts-pop-slidein {
+    from { opacity: 0; transform: translateX(-50%) scale(0.93);}
+    to { opacity: 0.98; transform: translateX(-50%) scale(1);}
+}
+
+#fitts-feedback, #cognitive-feedback {
+    min-height: 1.3em;
+    text-align: center;
+    font-size: 1.14em;
+    margin: 1.2em 0 0.8em 0;
+    color: #125478;
+    font-weight: 500;
+    word-break: break-word;
+    line-height: 1.4;
+    padding: 0 0.3em;
+}
+
+#fitts-progbar {
+    width: 100%;
+    height: 10px;
+    background: #e3eaf2;
+    margin: 0.9em 0 1.1em 0;
+    border-radius: 5px;
+    overflow: hidden;
+}
+
+#fitts-prog {
+    height: 100%;
+    width: 0;
+    background: linear-gradient(90deg,#19C5FA 0%,#1661ee 100%);
+    transition: width 0.23s;
+}
+
+/* ----- Cognitive Test Styles ----- */
+.cognitive-progbar-outer {
+    width:100%;
+    height:17px;
+    background:#e6eaf2;
+    border-radius: 10px;
+    margin-bottom: 1.5em;
+}
+
+#cognitive-prog-bar {
+    width:0%;
+    height:100%;
+    background: linear-gradient(90deg,#1968ff 0%,#1850bb 90%);
+    border-radius: 10px;
+    font-weight: 700;
+    font-size: 0.97em;
+    color:#fff;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    user-select: none;
+    transition: width 0.32s;
+}
+
+.cog-btn-row {
+    display: flex;
+    justify-content: center;
+    gap: 2em;
+    margin: 2em 0 1.8em 0;
+    flex-wrap: wrap;
+}
+
+.cog-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-width: 110px;
+    min-height: 64px;
+    margin: 0 0.6em;
+    padding: 16px 0;
+    border: none;
+    border-radius: 14px;
+    font-size: 1.30em;
+    font-family: 'Inter', Arial, sans-serif;
+    font-weight: 700;
+    box-shadow: 0 2px 18px 0 rgba(22,34,44,0.09), 0 1px 5px #dbe2fb44;
+    color: #20242d;
+    cursor: pointer;
+    transition: transform 0.11s, box-shadow 0.15s, background 0.12s;
+    outline: none;
+    letter-spacing: 0.01em;
+}
+
+.cog-btn:active, .cog-btn:focus-visible {
+    transform: scale(0.97);
+    box-shadow: 0 2px 7px #7384ab44;
+    outline: 3px solid #356bf7;
+    z-index: 2;
+}
+
+.cog-btn.cog-red {
+    background: linear-gradient(90deg,#fd5042 60%,#c3241d 100%);
+    color: #fff;
+    box-shadow: 0 2px 12px #f09a8b4d;
+}
+
+.cog-btn.cog-blue {
+    background: linear-gradient(90deg,#227af3 50%,#223994 100%);
+    color: #fff;
+    box-shadow: 0 2px 12px #9cbafc38;
+}
+
+.cog-btn.cog-green {
+    background: linear-gradient(90deg,#23cb75 40%,#188652 120%);
+    color: #fff;
+    box-shadow: 0 2px 12px #74d1b637;
+}
+
+.cog-btn.cog-yellow {
+    background: linear-gradient(90deg,#ffd945 40%,#ffb420 120%);
+    color: #333;
+    text-shadow: 0 1px 6px #fff4a399;
+    box-shadow: 0 2px 12px #ffe38b44;
+}
+
+.cog-btn.cog-match, .cog-btn.cog-nmatch {
+    background: linear-gradient(90deg,#eaeffc 60%,#95aadb 100%);
+    color: #292d3b;
+    font-size: 1.15em;
+    min-width: 130px;
+    margin: 0 1.2em;
+}
+
+.cog-btn.cog-match {
+    background: linear-gradient(90deg,#3ed196 10%,#26736b 170%);
+    color: #fff;
+}
+
+.cog-btn.cog-nmatch {
+    background: linear-gradient(90deg,#ff7065 10%,#d02765 170%);
+    color: #fff;
+}
+
+@media (max-width:600px) {
+    #main-title-bar {
+        font-size: 1.08em;
+        border-radius: 0;
+        padding: 0.9em 0 0.7em 0;
+    }
+    
+    #session-container {
+        width: 100vw;
+        max-width: 100vw;
+        min-height: 320px;
+        border-radius: 0;
+        padding: 1vw 2vw 2vw 2vw;
+    }
+    
+    .button {
+        font-size: 1em;
+        padding: 0.7em 5vw;
+        margin: 16px 7px 12px 0;
+    }
+    
+    #main-content {
+        min-height: 0;
+    }
+    
+    #fitts-arena {
+        min-width: 130px;
+        min-height: 99px;
+        width: 98vw;
+        height: 52vw;
+        max-width: 99vw;
+        max-height: 360px;
+    }
+    
+    .cog-btn-row { gap: 1.1em; }
+    .cog-btn { min-width:75px;font-size:1.01em;padding:11px 0; }
+    
+    .break-timer {
+        font-size: 2.5em;
+    }
+}
+/* Add these styles to your existing style.css file */
+
+/* Moving Targets Specific Styles */
+.trial-info {
+    margin-top: 1em;
+    text-align: center;
+}
+
+#misclick-counter {
+    font-size: 1em;
+    font-weight: 600;
+    padding: 0.5em 1em;
+    background: #f3f4f6;
+    border-radius: 6px;
+    border: 1px solid #d1d5db;
+}
+
+.moving-target {
+    transition: opacity 0.2s ease-in-out;
+}
+
+.result-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1em;
+    margin: 1.5em 0;
+}
+
+.result-item {
+    background: #f8fafc;
+    padding: 1em;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+    text-align: center;
+}
+
+.result-section {
+    margin-bottom: 1.5em;
+}
+
+.result-section h4 {
+    color: #1e40af;
+    margin-bottom: 0.5em;
+    font-size: 1.1em;
+}
+
+.test-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 1em;
+    flex-wrap: wrap;
+    gap: 1em;
+}
+
+@media (max-width: 600px) {
+    .test-controls {
+        flex-direction: column;
+    }
+    
+    .result-grid {
+        grid-template-columns: 1fr;
+    }
+}
+/* Add these styles to your existing style.css file */
+
+.break-controls {
+    margin-top: 2em;
+    text-align: center;
+}
+
+.break-controls .button {
+    background: linear-gradient(90deg, #059669 0%, #047857 90%);
+    border-color: #047857;
+    font-size: 1.1em;
+    padding: 0.8em 2em;
+    margin-bottom: 1em;
+}
+
+.break-controls .button:hover {
+    background: linear-gradient(90deg, #10b981 0%, #059669 100%);
+    border-color: #059669;
+}
+
+.skip-note {
+    color: #6b7280;
+    font-size: 0.9em;
+    font-style: italic;
+    margin: 0.5em 0 0 0;
+    line-height: 1.4;
+}
+
+@media (max-width: 600px) {
+    .break-controls .button {
+        font-size: 1em;
+        padding: 0.7em 1.5em;
+        width: 90%;
+    }
+}
+/* Test Selection Styles */
+.test-selection-container {
+    max-width: 800px;
+    margin: 0 auto;
+    text-align: center;
+}
+
+.selection-instruction {
+    font-size: 1.1em;
+    color: #4b5563;
+    margin-bottom: 2em;
+}
+
+.test-options {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2em;
+    margin: 2em 0;
+}
+
+.test-option {
+    display: flex;
+}
+
+.test-card {
+    background: #fff;
+    border: 2px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 2em;
+    text-align: left;
+    transition: all 0.3s ease;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.test-card:hover {
+    border-color: #3b82f6;
+    box-shadow: 0 4px 20px rgba(59, 130, 246, 0.1);
+}
+
+.cognitive-card {
+    border-left: 4px solid #3b82f6;
+}
+
+.physical-card {
+    border-left: 4px solid #10b981;
+}
+
+.test-card h3 {
+    color: #1f2937;
+    margin: 0 0 1em 0;
+    font-size: 1.3em;
+}
+
+.test-card p {
+    color: #6b7280;
+    margin-bottom: 1em;
+}
+
+.test-card ul {
+    color: #4b5563;
+    margin: 1em 0;
+    padding-left: 1.5em;
+    flex-grow: 1;
+}
+
+.test-card li {
+    margin: 0.5em 0;
+}
+
+.test-card .button {
+    margin-top: auto;
+    align-self: flex-start;
+    width: 100%;
+}
+
+/* Physical Test Styles */
+.physical-test-container {
+    max-width: 600px;
+    margin: 0 auto;
+    text-align: center;
+}
+
+.physical-test-content {
+    background: #f9fafb;
+    border-radius: 12px;
+    padding: 2em;
+    margin: 2em 0;
+}
+
+.timer-section {
+    margin-bottom: 2em;
+}
+
+.timer-display {
+    background: #1f2937;
+    color: #fff;
+    border-radius: 8px;
+    padding: 1.5em;
+    margin: 1em 0;
+}
+
+.main-timer {
+    font-size: 3em;
+    font-weight: 700;
+    font-family: 'Inter', monospace;
+}
+
+.active-time {
+    background: #059669;
+    color: #fff;
+    border-radius: 8px;
+    padding: 1em;
+    margin: 1em 0;
+}
+
+.active-timer {
+    font-size: 1.5em;
+    font-weight: 600;
+    font-family: 'Inter', monospace;
+}
+
+.timer-label {
+    font-size: 0.9em;
+    opacity: 0.8;
+    margin-top: 0.5em;
+}
+
+.timer-controls {
+    display: flex;
+    gap: 1em;
+    justify-content: center;
+    margin: 2em 0;
+    flex-wrap: wrap;
+}
+
+.timer-btn {
+    min-width: 150px;
+    font-size: 1.1em;
+    padding: 0.8em 1.5em;
+}
+
+.exercise-instructions {
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+    padding: 1.5em;
+    text-align: left;
+    margin-top: 2em;
+}
+
+.exercise-instructions h4 {
+    color: #1e40af;
+    margin: 0 0 1em 0;
+}
+
+.exercise-instructions ul {
+    color: #1f2937;
+    margin: 0;
+}
+
+.exercise-instructions li {
+    margin: 0.5em 0;
+}
+
+.completion-message {
+    background: #f0fdf4;
+    border: 2px solid #bbf7d0;
+    border-radius: 8px;
+    padding: 2em;
+    margin: 2em 0;
+}
+
+.completion-message h3 {
+    color: #15803d;
+    margin: 0 0 1em 0;
+}
+
+.completion-message p {
+    color: #166534;
+    margin: 0.5em 0;
+}
+
+@media (max-width: 768px) {
+    .test-options {
+        grid-template-columns: 1fr;
+        gap: 1.5em;
+    }
+    
+    .timer-controls {
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    .timer-btn {
+        width: 90%;
+    }
+    
+    .main-timer {
+        font-size: 2.5em;
+    }
+}
+/* Test Selection Styles */
+.test-selection-container {
+    max-width: 800px;
+    margin: 0 auto;
+    text-align: center;
+}
+
+.selection-instruction {
+    font-size: 1.1em;
+    color: #4b5563;
+    margin-bottom: 2em;
+}
+
+.test-options {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2em;
+    margin: 2em 0;
+}
+
+.test-option {
+    display: flex;
+}
+
+.test-card {
+    background: #fff;
+    border: 2px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 2em;
+    text-align: left;
+    transition: all 0.3s ease;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.test-card:hover {
+    border-color: #3b82f6;
+    box-shadow: 0 4px 20px rgba(59, 130, 246, 0.1);
+}
+
+.cognitive-card {
+    border-left: 4px solid #3b82f6;
+}
+
+.physical-card {
+    border-left: 4px solid #10b981;
+}
+
+.test-card h3 {
+    color: #1f2937;
+    margin: 0 0 1em 0;
+    font-size: 1.3em;
+}
+
+.test-card p {
+    color: #6b7280;
+    margin-bottom: 1em;
+}
+
+.test-card ul {
+    color: #4b5563;
+    margin: 1em 0;
+    padding-left: 1.5em;
+    flex-grow: 1;
+}
+
+.test-card li {
+    margin: 0.5em 0;
+}
+
+.test-card .button {
+    margin-top: auto;
+    align-self: flex-start;
+    width: 100%;
+}
+
+/* Physical Test Styles */
+.physical-test-container {
+    max-width: 600px;
+    margin: 0 auto;
+    text-align: center;
+}
+
+.physical-test-content {
+    background: #f9fafb;
+    border-radius: 12px;
+    padding: 2em;
+    margin: 2em 0;
+}
+
+.timer-section {
+    margin-bottom: 2em;
+}
+
+.timer-display {
+    background: #1f2937;
+    color: #fff;
+    border-radius: 8px;
+    padding: 1.5em;
+    margin: 1em 0;
+}
+
+.main-timer {
+    font-size: 3em;
+    font-weight: 700;
+    font-family: 'Inter', monospace;
+}
+
+.timer-label {
+    font-size: 0.9em;
+    opacity: 0.8;
+    margin-top: 0.5em;
+}
+
+.timer-controls {
+    display: flex;
+    gap: 1em;
+    justify-content: center;
+    margin: 2em 0;
+    flex-wrap: wrap;
+}
+
+.timer-btn {
+    min-width: 150px;
+    font-size: 1.1em;
+    padding: 0.8em 1.5em;
+}
+
+.exercise-instructions {
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+    padding: 1.5em;
+    text-align: left;
+    margin-top: 2em;
+}
+
+.exercise-instructions h4 {
+    color: #1e40af;
+    margin: 0 0 1em 0;
+}
+
+.exercise-instructions ul {
+    color: #1f2937;
+    margin: 0;
+}
+
+.exercise-instructions li {
+    margin: 0.5em 0;
+}
+
+.completion-message {
+    background: #f0fdf4;
+    border: 2px solid #bbf7d0;
+    border-radius: 8px;
+    padding: 2em;
+    margin: 2em 0;
+}
+
+.completion-message h3 {
+    color: #15803d;
+    margin: 0 0 1em 0;
+}
+
+.completion-message p {
+    color: #166534;
+    margin: 0.5em 0;
+}
+
+.break-controls {
+    margin-top: 2em;
+    text-align: center;
+}
+
+.break-controls .button {
+    background: linear-gradient(90deg, #059669 0%, #047857 90%);
+    border-color: #047857;
+    font-size: 1.1em;
+    padding: 0.8em 2em;
+    margin-bottom: 1em;
+}
+
+.break-controls .button:hover {
+    background: linear-gradient(90deg, #10b981 0%, #059669 100%);
+    border-color: #059669;
+}
+
+.skip-note {
+    color: #6b7280;
+    font-size: 0.9em;
+    font-style: italic;
+    margin: 0.5em 0 0 0;
+    line-height: 1.4;
+}
+
+@media (max-width: 768px) {
+    .test-options {
+        grid-template-columns: 1fr;
+        gap: 1.5em;
+    }
+    
+    .timer-controls {
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    .timer-btn {
+        width: 90%;
+    }
+    
+    .main-timer {
+        font-size: 2.5em;
+    }
+    
+    .break-controls .button {
+        font-size: 1em;
+        padding: 0.7em 1.5em;
+        width: 90%;
+    }
+}
