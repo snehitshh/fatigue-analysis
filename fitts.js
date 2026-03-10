@@ -183,6 +183,7 @@ function mountFittsTest(container, onComplete, participantId) {
 
     function initializeTrial() {
         greenTargetsClicked = 0;
+        misclickCount = 0;
         
         const randomLevel = Math.floor(Math.random() * 5) + 1;
         const config = LEVELS[randomLevel];
@@ -286,7 +287,7 @@ function mountFittsTest(container, onComplete, participantId) {
         }, 150);
     }
 
-    function recordTrial(success, time, clickedCount) {
+  function recordTrial(success, time, clickedCount) {
         if (clickedCount <= 1) return; 
 
         const totalID = currentTrial.sumOfID;
@@ -294,18 +295,32 @@ function mountFittsTest(container, onComplete, participantId) {
         const avgID = (totalID / moves).toFixed(4);
         const throughput = (totalID / (time / 1000)).toFixed(4);
 
+        // --- NEW: Fatigue Metrics ---
+        // 1. Average Movement Time (Gets slower with physical fatigue)
+        const avgMovementTime = (time / clickedCount).toFixed(2);
+        
+        // 2. Error Rate Percentage (Increases with cognitive/attention fatigue)
+        const totalAttempts = clickedCount + misclickCount;
+        const errorRate = totalAttempts > 0 ? ((misclickCount / totalAttempts) * 100).toFixed(2) : 0;
+        
+        // 3. Exact Elapsed Time in Block (Tracks micro-fatigue within the 60s)
+        const elapsedTimeInBlock = Math.round(performance.now() - testStartTime);
+
         trialData.push({ 
             participantId, 
-            block: 1, 
+            block: completedMinutes + 1, // Dynamically tags which minute they are in
             trialInBlock: trialIdx + 1, 
             difficultyLevel: currentTrial.level, 
             indexOfDifficulty: avgID, 
             targetsClicked: clickedCount,
+            misclicks: misclickCount, 
             totalTime_ms: time.toFixed(2), 
             throughput_bps: throughput, 
-            misclicks: misclickCount, 
+            avgMovementTime_ms: avgMovementTime,       // NEW
+            errorRate_percent: errorRate,              // NEW
+            elapsedTimeInBlock_ms: elapsedTimeInBlock, // NEW
             success, 
-            timestamp: Date.now() 
+            timestampReadable: new Date().toISOString() // NEW: Clean, readable timestamp
         });
     }
 
@@ -359,15 +374,30 @@ function mountFittsTest(container, onComplete, participantId) {
         };
     }
 
-    function downloadCSV(data, fileName) {
+function downloadCSV(data, fileName) {
         if (!data.length) return;
-        const headers = "participantId,block,setIndex,trialInSet,difficultyLevel,avgIndexOfDifficulty,targetsClicked,totalTime_ms,throughput_bps,misclicks,success,timestamp";
-        const rows = data.map(r => `${r.participantId},${r.block},${completedMinutes},${r.trialInBlock},${r.difficultyLevel},${r.indexOfDifficulty},${r.targetsClicked},${r.totalTime_ms},${r.throughput_bps},${r.misclicks},${r.success},${r.timestamp}`).join("\n");
+        
+        // --- NEW: Refined Research Headers ---
+        const headers = "participantId,block,trialInSet,difficultyLevel,avgIndexOfDifficulty,targetsClicked,misclicks,totalTime_ms,throughput_bps,avg_MT_ms,error_rate_%,elapsed_time_in_block_ms,success,timestamp_readable";
+        
+        const rows = data.map(r => 
+            `${r.participantId},${r.block},${r.trialInBlock},${r.difficultyLevel},${r.indexOfDifficulty},${r.targetsClicked},${r.misclicks},${r.totalTime_ms},${r.throughput_bps},${r.avgMovementTime_ms},${r.errorRate_percent},${r.elapsedTimeInBlock_ms},${r.success},${r.timestampReadable}`
+        ).join("\n");
+        
         const blob = new Blob([headers + "\n" + rows], { type: "text/csv" });
         const a = document.createElement("a");
         a.href = URL.createObjectURL(blob);
-        a.download = `fitts_data_${fileName}.csv`;
+        
+        // --- NEW: Precise Academic File Naming ---
+        // Example output: "102206023_fitts_minute_1.csv"
+        const pid = data[0].participantId || participantId || "UNKNOWN";
+        a.download = `${pid}_fitts_minute_${completedMinutes}.csv`;
+        
+        // Safe trigger and memory cleanup
+        document.body.appendChild(a);
         a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(a.href);
     }
 
     function togglePause() {

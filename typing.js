@@ -135,7 +135,7 @@ function mountTypingTest(container, onComplete, participantId, blockIdx) {
         sentenceStartTime = performance.now();
     }
 
-    function submitSentence() {
+function submitSentence() {
         const inputField = document.getElementById('typing-input');
         const typedText = inputField.value.trim();
         const originalSentence = currentTestSentences[currentSentenceIndex].trim();
@@ -149,6 +149,9 @@ function mountTypingTest(container, onComplete, participantId, blockIdx) {
         }
 
         const metrics = calculateMetrics(originalSentence, typedText, currentKeyTimestamps, backspaceCounter, sentenceStartTime);
+        
+        // --- NEW: Calculate exact elapsed time within the 1-minute block ---
+        const elapsedTimeInBlock = Math.round(performance.now() - testStartTime);
 
         logs.push({
             participantId: participantId,
@@ -163,8 +166,9 @@ function mountTypingTest(container, onComplete, participantId, blockIdx) {
             iki: metrics.iki,
             kspc: metrics.kspc,
             backspaceCount: metrics.backspaceCount,
-            durationMs: performance.now() - sentenceStartTime,
-            timestamp: new Date().toISOString()
+            durationMs: Math.round(performance.now() - sentenceStartTime),
+            elapsedTimeInBlock_ms: elapsedTimeInBlock, // FATIGUE METRIC
+            timestampReadable: new Date().toISOString()
         });
 
         currentSentenceIndex++;
@@ -228,22 +232,34 @@ function mountTypingTest(container, onComplete, participantId, blockIdx) {
         };
     }
 
-    function downloadCSV(data, fileName) {
+function downloadCSV(data, fileName) {
         if (!data.length) return;
-        const headers = "participantId,block,minuteSet,sentenceNumber,originalSentence,typedText,wpm,errorDistance,errorPercentage,iki,kspc,backspaceCount,durationMs,timestamp";
+        
+        // --- NEW: Refined Research Headers ---
+        const headers = "participantId,block,minuteSet,sentenceNumber,originalSentence,typedText,wpm,errorDistance,errorPercentage,iki,kspc,backspaceCount,durationMs,elapsed_time_in_block_ms,timestamp_readable";
+        
         const rows = data.map(r => 
-            `"${r.participantId}",${r.block},${r.minuteSet},${r.sentenceNumber},"${r.originalSentence.replace(/"/g, '""')}","${r.typedText.replace(/"/g, '""')}",${r.wpm},${r.errorDistance},${r.errorPercentage},${r.iki},${r.kspc},${r.backspaceCount},${r.durationMs},"${r.timestamp}"`
+            // Note: Strings are wrapped in quotes to prevent commas in sentences from breaking the columns
+            `"${r.participantId}",${r.block},${r.minuteSet},${r.sentenceNumber},"${r.originalSentence.replace(/"/g, '""')}","${r.typedText.replace(/"/g, '""')}",${r.wpm},${r.errorDistance},${r.errorPercentage},${r.iki},${r.kspc},${r.backspaceCount},${r.durationMs},${r.elapsedTimeInBlock_ms},"${r.timestampReadable}"`
         ).join("\n");
         
         const blob = new Blob([headers + "\n" + rows], { type: "text/csv" });
         const a = document.createElement("a");
         a.href = URL.createObjectURL(blob);
-        a.download = `${fileName}_${participantId}.csv`;
+
+        // --- NEW: Precise Academic File Naming ---
+        // Example output: "102206023_typing_minute_1.csv"
+        const pid = data[0].participantId || participantId || "UNKNOWN";
+        const minSet = data[0].minuteSet || 1;
+        a.download = `${pid}_typing_minute_${minSet}.csv`;
+        
+        // Safe trigger and memory cleanup
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
+        window.URL.revokeObjectURL(a.href);
     }
-
+    
     // --- Core Metrics Engine ---
     function calculateMetrics(original, typed, keyTimestamps, backspaces, startMs) {
         let wpm = 0, errorDistance = 0, errorPercentage = 0, iki = 0, kspc = 0;

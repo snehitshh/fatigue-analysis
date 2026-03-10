@@ -1,4 +1,4 @@
-function mountCognitiveTest(container, onComplete, blockIdx) {
+function mountCognitiveTest(container, onComplete, blockIdx, participantId) {
     // --- Configuration ---
     const PHASE_TIME = 150 * 1000;       // Real test duration (2.5 mins)
     const BREAK_TIME = 30 * 1000;        // Real break duration (30 secs)
@@ -171,7 +171,7 @@ function mountCognitiveTest(container, onComplete, blockIdx) {
         trialTimeout = setTimeout(() => handleResponse(null, true), STIMULUS_TIMEOUT);
     }
 
-    window.handleResponse = (response, isTimeout = false) => {
+window.handleResponse = (response, isTimeout = false) => {
         if (!awaitingResponse) return;
         awaitingResponse = false;
         if (trialTimeout) clearTimeout(trialTimeout);
@@ -186,12 +186,20 @@ function mountCognitiveTest(container, onComplete, blockIdx) {
         feedback.innerHTML = isCorrect ? '<span style="color:#10b981">✓</span>' : '<span style="color:#ef4444">✗</span>';
         stimDiv.appendChild(feedback);
 
-        // NEW: Only record the trial if it is NOT a practice round
+        // NEW: Record standardized metrics for non-practice rounds
         if (!phase.isPractice) {
+            // Safely grab participantId (falls back to global session data if needed)
+            const pid = typeof participantId !== 'undefined' ? participantId : (window.participantId || "UNKNOWN");
+            
             trialResults.push({ 
-                phase: phase.type, 
+                participantId: pid,
+                block: blockIdx || 1,
+                testType: phase.type,   // e.g., 'stroop' or 'axcpt'
+                phase: phase.label,     // e.g., 'Stroop Test (Part 1)'
                 correct: isCorrect, 
-                rt: isTimeout ? STIMULUS_TIMEOUT : (performance.now() - trialStartTime) 
+                rt: isTimeout ? STIMULUS_TIMEOUT : (performance.now() - trialStartTime),
+                elapsedTimeInBlock_ms: Math.round(performance.now() - phaseStartTime), // FATIGUE TRACKER
+                timestampReadable: new Date().toISOString() // READABLE TIME
             });
         }
         
@@ -205,18 +213,31 @@ function mountCognitiveTest(container, onComplete, blockIdx) {
         onComplete({ results: trialResults });
     }
 
-    function downloadCSV() {
-        // Prevent downloading an empty CSV if they skipped or broke the test early
+function downloadCSV() {
         if (trialResults.length === 0) return;
         
-        const csv = "Phase,Correct,ReactionTime\n" + trialResults.map(r => `${r.phase},${r.correct},${r.rt.toFixed(2)}`).join("\n");
-        const blob = new Blob([csv], { type: 'text/csv' });
+        // 1. Standardized Research Headers
+        const headers = "participantId,block,testType,phase,correct,reactionTime_ms,elapsed_time_in_block_ms,timestamp_readable";
+        
+        // 2. Map data exactly to the headers
+        const rows = trialResults.map(r => 
+            `${r.participantId},${r.block},${r.testType},"${r.phase}",${r.correct},${r.rt.toFixed(2)},${r.elapsedTimeInBlock_ms},"${r.timestampReadable}"`
+        ).join("\n");
+        
+        const blob = new Blob([headers + "\n" + rows], { type: 'text/csv' });
         const a = document.createElement("a");
         a.href = URL.createObjectURL(blob);
-        a.download = `cognitive_battery_block${blockIdx}.csv`;
+
+        // 3. Precise Academic Naming Format
+        const pid = trialResults[0].participantId || "UNKNOWN";
+        const blockNum = trialResults[0].block || 1;
+        a.download = `${pid}_cognitive_battery_block_${blockNum}.csv`;
         
-        // Force silent download
-        setTimeout(() => { a.click(); }, 100);
+        // 4. Safe trigger and memory cleanup
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(a.href);
     }
 
     showInstructions();
