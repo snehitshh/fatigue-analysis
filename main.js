@@ -25,6 +25,17 @@ document.addEventListener('DOMContentLoaded', function() {
     showDemographics();
 });
 
+// --- NEW: Accidental Refresh Blocker (Modern Standard) ---
+window.addEventListener('beforeunload', function (e) {
+    // If the experiment is officially 'complete', let them leave without a warning
+    if (currentStep === 'complete') return; 
+
+    // Modern browsers require preventDefault() to trigger the generic warning prompt
+    e.preventDefault(); 
+    
+    // Returning a value satisfies older browsers without triggering the deprecation warning
+    return ''; 
+});
 function updateProgress() {
     const stepName = {
         'demographics': 'Participant Info',
@@ -41,6 +52,28 @@ function updateProgress() {
     progressBar.textContent = `Block ${currentBlock}/${TOTAL_BLOCKS} - ${stepName}`;
 }
 
+
+// --- NEW: Demographics Downloader ---
+function downloadDemographicsCSV(data) {
+    const pid = data.participantId || "UNKNOWN";
+    const headers = Object.keys(data).join(",");
+    const values = Object.values(data).join(",");
+    const csvContent = headers + "\n" + values;
+    
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    
+    // Precise naming format for the master profile
+    link.download = `${pid}_demographics_profile.csv`;
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+}
+
 // 1. Demographics
 function showDemographics() {
     currentStep = 'demographics';
@@ -49,16 +82,16 @@ function showDemographics() {
     if (typeof mountDemographicsForm === "function") {
         mountDemographicsForm(mainContent, (data) => {
             sessionData.demographics = data;
+            downloadDemographicsCSV(data); 
             showExperimentSetup(); 
         });
     } else {
         sessionData.demographics = { participantId: "TEST_" + Math.floor(Math.random() * 1000) };
+        downloadDemographicsCSV(sessionData.demographics);
         showExperimentSetup();
     }
 }
 
-// 2. NEW: Experiment Setup Screen (Only shown once!)
-// 2. Experiment Setup (Choose Primary Task ONLY)
 // 2. Experiment Setup (Display Random Fatigue + Choose Primary Task)
 function showExperimentSetup() {
     currentStep = 'experiment-setup';
@@ -124,11 +157,21 @@ function showExperimentSetup() {
 }
 
 // 3. Block Initialization
+// 3. Block Initialization
 function startBlock(blockNum) {
     if (blockNum > TOTAL_BLOCKS) {
         showCompletion();
         return;
     }
+
+    // --- NEW: Lock Fullscreen on the very first block ---
+    if (blockNum === 1) {
+        const docEl = document.documentElement;
+        if (docEl.requestFullscreen) {
+            docEl.requestFullscreen().catch(err => console.log("Fullscreen denied:", err));
+        }
+    }
+
     currentBlock = blockNum; 
     
     sessionData.blocks[currentBlock - 1] = {
@@ -169,13 +212,19 @@ function showTypingTest() {
 }
 
 // 5. NASA-TLX
+// 5. NASA-TLX
 function showNASATLX() {
     currentStep = 'nasatlx';
     updateProgress();
+    
+    // Grab the ID before passing it to the test
+    const pid = sessionData.demographics.participantId || "UNKNOWN";
+    
+    // Pass currentBlock and pid as the 3rd and 4th arguments
     mountNASATLX(mainContent, (data) => {
         sessionData.blocks[currentBlock - 1].nasatlxData = data;
         showBreak();
-    });
+    }, currentBlock, pid);
 }
 
 // 6. Break Period
@@ -220,13 +269,19 @@ function proceedToFatigueTest() {
 }
 
 // 8A. Cognitive Test
+// 8A. Cognitive Test
 function showCognitiveTest() {
     currentStep = 'cognitive';
     updateProgress();
+    
+    // Grab the ID before passing it to the test
+    const pid = sessionData.demographics.participantId || "UNKNOWN";
+    
+    // Pass currentBlock and pid as the 3rd and 4th arguments
     mountCognitiveTest(mainContent, (data) => {
         sessionData.blocks[currentBlock - 1].fatigueData = data;
         finishBlock();
-    }, currentBlock);
+    }, currentBlock, pid);
 }
 
 // 8B. Physical Test
@@ -312,9 +367,14 @@ function downloadResults() {
         const b = sessionData.blocks[i];
         if (b) rows.push(`${sessionData.demographics.participantId},${sessionBaseTask},${sessionFatigueTrack},${b.blockNumber},${b.nasatlxData?.overallScore || ''}`);
     }
-    const blob = new Blob([rows.join('\\n')], { type: 'text/csv' });
+    // Fixed the newline character here so it formats properly in Excel
+    const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `master_data_${sessionData.demographics.participantId}.csv`;
+    link.download = `${sessionData.demographics.participantId}_master_results.csv`;
+    
+    document.body.appendChild(link);
     link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(link.href);
 }

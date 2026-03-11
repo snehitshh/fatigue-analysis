@@ -1,4 +1,4 @@
-function mountNASATLX(container, onComplete) {
+function mountNASATLX(container, onComplete, blockIdx, participantId) {
     const questions = [
         {
             id: 'mentalDemand',
@@ -128,7 +128,8 @@ function mountNASATLX(container, onComplete) {
     });
 
     // Individual CSV Download function
-    function downloadNASACSV(data) {
+// Individual CSV Download function
+    function downloadNASACSV(data, pid, blockNum) {
         const headers = Object.keys(data).join(",");
         const values = Object.values(data).join(",");
         const csvContent = headers + "\n" + values;
@@ -137,16 +138,29 @@ function mountNASATLX(container, onComplete) {
         const url = window.URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = `nasatlx_report_${new Date().getTime()}.csv`;
+        
+        // --- PRECISE ACADEMIC NAMING FORMAT ---
+        link.download = `${pid}_nasatlx_block_${blockNum}.csv`;
+        
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+        window.URL.revokeObjectURL(url); // Flushes memory
     }
 
-    form.addEventListener('submit', function(e) {
+form.addEventListener('submit', function(e) {
         e.preventDefault();
         
-        const responses = {};
+        // Safely grab the IDs
+        const pid = typeof participantId !== 'undefined' ? participantId : (window.participantId || "UNKNOWN");
+        const blockNum = typeof blockIdx !== 'undefined' ? blockIdx : 1;
+
+        // Initialize responses with our standard identifiers first
+        const responses = {
+            participantId: pid,
+            block: blockNum
+        };
+        
         let totalScore = 0;
         
         // Loop through all sliders to gather their final values
@@ -156,12 +170,12 @@ function mountNASATLX(container, onComplete) {
             totalScore += value;
         });
 
-        // Calculate and append the overall score
+        // Calculate and append the overall score and standardized readable timestamp
         responses.overallScore = (totalScore / questions.length).toFixed(2);
-        responses.timestamp = new Date().toISOString();
+        responses.timestampReadable = new Date().toISOString();
 
-        // Trigger immediate download
-        downloadNASACSV(responses);
+        // Trigger immediate download with our strict naming format
+        downloadNASACSV(responses, pid, blockNum);
 
         // Move to the next step
         onComplete(responses);
