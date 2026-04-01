@@ -93,67 +93,67 @@ function showDemographics() {
 }
 
 // 2. Experiment Setup (Display Random Fatigue + Choose Primary Task)
+// 2. Experiment Setup (Fully Randomized Assignment)
 function showExperimentSetup() {
     currentStep = 'experiment-setup';
     updateProgress();
     
-    // --- RANDOM ASSIGNMENT LOGIC ---
-    // 50% chance for cognitive, 50% chance for physical
-    sessionFatigueTrack = Math.random() < 0.5 ? 'cognitive' : 'physical';
+    // --- NEW: FULLY RANDOM ASSIGNMENT LOGIC ---
+    // Define the 4 exact combinations (25% probability each)
+    const conditions = [
+        { primary: 'fitts', fatigue: 'cognitive' },
+        { primary: 'typing', fatigue: 'cognitive' },
+        { primary: 'fitts', fatigue: 'physical' },
+        { primary: 'typing', fatigue: 'physical' }
+    ];
+
+    // Pick one randomly
+    const assignedCondition = conditions[Math.floor(Math.random() * conditions.length)];
+
+    // Assign to your global session variables
+    sessionBaseTask = assignedCondition.primary;
+    sessionFatigueTrack = assignedCondition.fatigue;
     
     // Prepare the text based on what the randomizer chose
-    const fatigueTitle = sessionFatigueTrack === 'cognitive' ? 'Cognitive Battery' : 'Physical Exercise';
+    const primaryTitle = sessionBaseTask === 'fitts' ? "Fitts' Tapping Task" : "Typing Task";
+    const primaryDesc = sessionBaseTask === 'fitts' 
+        ? 'You will click moving targets to measure spatial motor skills.' 
+        : 'You will transcribe text to measure keyboard motor skills.';
+
+    const fatigueTitle = sessionFatigueTrack === 'cognitive' ? "Cognitive Battery" : "Physical Exercise";
     const fatigueDesc = sessionFatigueTrack === 'cognitive' 
         ? 'You will complete Stroop & AX-CPT tests.' 
         : 'You will complete physical fatigue induction.';
 
+    // Render the read-only UI (No clicking required, just review and continue)
     mainContent.innerHTML = `
         <div class="test-selection-container" style="max-width: 800px; margin: 0 auto; padding-top: 20px;">
             <div class="block-title" style="text-align: center;">Experiment Setup</div>
+            <p style="text-align: center; color: #6b7280; margin-bottom: 30px;">
+                You have been randomly assigned to the following testing protocol to prevent selection bias.
+            </p>
             
-            <div style="background: #f8fafc; border: 2px dashed #94a3b8; padding: 25px; border-radius: 8px; margin-bottom: 30px; text-align: center;">
-                <h3 style="margin-top: 0; color: #4b5563; font-size: 1.1em; text-transform: uppercase; letter-spacing: 1px;">Assigned Fatigue Track</h3>
-                <h2 style="color: #2563eb; margin: 10px 0; font-size: 1.8em;">${fatigueTitle}</h2>
-                <p style="color: #6b7280; margin: 0; font-size: 1.1em;">${fatigueDesc}</p>
-            </div>
+            <div style="display: flex; gap: 20px; margin-bottom: 40px;">
+                <div style="flex: 1; background: #eff6ff; border: 2px solid #2563eb; padding: 25px; border-radius: 8px; text-align: center;">
+                    <h3 style="margin-top: 0; color: #4b5563; font-size: 1em; text-transform: uppercase; letter-spacing: 1px;">Primary Task</h3>
+                    <h2 style="color: #1e3a8a; margin: 10px 0; font-size: 1.5em;">${primaryTitle}</h2>
+                    <p style="color: #6b7280; margin: 0; font-size: 1em;">${primaryDesc}</p>
+                </div>
 
-            <div style="margin-bottom: 40px;">
-                <h3 style="margin-bottom: 15px;">Now, Select Your Primary Task:</h3>
-                <div style="display: flex; gap: 20px;">
-                    <div class="test-card" id="card-fitts" onclick="selectBase('fitts')" style="flex: 1; cursor: pointer; border: 2px solid #e5e7eb; padding: 20px; border-radius: 8px;">
-                        <h4 style="margin:0 0 10px 0; color: #1f2937;">Fitts' Tapping Task</h4>
-                        <p style="font-size: 0.9em; margin:0; color: #6b7280;">Click moving targets on the screen.</p>
-                    </div>
-                    <div class="test-card" id="card-typing" onclick="selectBase('typing')" style="flex: 1; cursor: pointer; border: 2px solid #e5e7eb; padding: 20px; border-radius: 8px;">
-                        <h4 style="margin:0 0 10px 0; color: #1f2937;">Typing Task</h4>
-                        <p style="font-size: 0.9em; margin:0; color: #6b7280;">Transcribe text quickly and accurately.</p>
-                    </div>
+                <div style="flex: 1; background: #f0fdf4; border: 2px solid #16a34a; padding: 25px; border-radius: 8px; text-align: center;">
+                    <h3 style="margin-top: 0; color: #4b5563; font-size: 1em; text-transform: uppercase; letter-spacing: 1px;">Fatigue Track</h3>
+                    <h2 style="color: #14532d; margin: 10px 0; font-size: 1.5em;">${fatigueTitle}</h2>
+                    <p style="color: #6b7280; margin: 0; font-size: 1em;">${fatigueDesc}</p>
                 </div>
             </div>
 
             <div style="text-align: center;">
-                <button class="button primary" id="start-exp-btn" disabled onclick="startBlock(1)" style="padding: 12px 30px; font-size: 1.1em; opacity: 0.5;">
+                <button class="button primary" id="start-exp-btn" onclick="startBlock(1)" style="padding: 12px 30px; font-size: 1.1em;">
                     Begin Experiment
                 </button>
             </div>
         </div>
     `;
-
-    // Handle the Fitts vs Typing selection
-    window.selectBase = function(type) {
-        sessionBaseTask = type;
-        
-        // Update UI visuals
-        document.getElementById('card-fitts').style.borderColor = type === 'fitts' ? '#2563eb' : '#e5e7eb';
-        document.getElementById('card-fitts').style.backgroundColor = type === 'fitts' ? '#eff6ff' : 'white';
-        document.getElementById('card-typing').style.borderColor = type === 'typing' ? '#2563eb' : '#e5e7eb';
-        document.getElementById('card-typing').style.backgroundColor = type === 'typing' ? '#eff6ff' : 'white';
-        
-        // Enable the Begin button
-        const btn = document.getElementById('start-exp-btn');
-        btn.disabled = false;
-        btn.style.opacity = '1';
-    };
 }
 
 // 3. Block Initialization
