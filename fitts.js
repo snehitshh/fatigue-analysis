@@ -15,6 +15,7 @@ function mountFittsTest(container, onComplete, participantId) {
     const DIALOG_TIMEOUT = 1000;
 
     let paused = false, pauseOverlay = null;
+    let pauseTimestamp = 0;
     let trialIdx = 0, trialData = [];
     let currentTrial = null;
     let animationFrame = null;
@@ -62,7 +63,7 @@ function mountFittsTest(container, onComplete, participantId) {
         window.startFittsTest = startTest;
     }
 
-    function startTest() {
+function startTest() {
         testStartTime = 0; // Wait for first click
         trialIdx = 0;
         trialData = [];
@@ -70,7 +71,8 @@ function mountFittsTest(container, onComplete, participantId) {
         showTestInterface();
 
         globalTimer = setInterval(() => {
-            if (testStartTime > 0) { 
+            // NEW: Only run the timer math if NOT paused
+            if (testStartTime > 0 && !paused) { 
                 const elapsed = performance.now() - testStartTime;
                 updateProgress(elapsed);
                 if (elapsed >= TEST_DURATION) {
@@ -400,13 +402,26 @@ function downloadCSV(data, fileName) {
         window.URL.revokeObjectURL(a.href);
     }
 
-    function togglePause() {
+ function togglePause() {
         if (paused) {
+            // -- RESUME LOGIC --
             paused = false;
             if (pauseOverlay) pauseOverlay.remove();
+            
+            // NEW: Time Shift Logic
+            // Shift the start times forward by however long they were paused
+            if (testStartTime > 0) {
+                const timeSpentPaused = performance.now() - pauseTimestamp;
+                testStartTime += timeSpentPaused;  // Fixes the 60s progress bar
+                trialStartTime += timeSpentPaused; // Protects the Fitts' throughput math
+            }
+
             if (currentTrial) animateTargets();
         } else {
+            // -- PAUSE LOGIC --
             paused = true;
+            pauseTimestamp = performance.now(); // NEW: Record exact moment of pause
+
             if (animationFrame) cancelAnimationFrame(animationFrame);
             const arena = document.getElementById('fitts-arena');
             pauseOverlay = document.createElement('div');

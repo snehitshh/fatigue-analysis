@@ -1,4 +1,83 @@
 function mountCognitiveTest(container, onComplete, blockIdx, participantId) {
+    window.toggleCognitivePause = () => {
+        if (isPaused) {
+            // --- RESUME LOGIC ---
+            isPaused = false;
+            if (pauseOverlay) pauseOverlay.remove();
+            
+            const timeSpentPaused = performance.now() - pauseTimestamp;
+            
+            // 1. Shift the global phase timer forward so the 2.5 min block doesn't end early
+            if (phaseStartTime > 0) phaseStartTime += timeSpentPaused;
+            
+            // 2. Restart the main progress bar interval
+            startPhaseTimer(PHASES[currentPhaseIdx].duration);
+
+            // 3. Handle the exact state the user paused in
+            if (resumePendingTrial) {
+                // If they paused during the tiny 150ms gap between words
+                resumePendingTrial = false;
+                nextTrial();
+            } else if (awaitingResponse) {
+                // If they paused while a word was actively on screen
+                trialStartTime += timeSpentPaused; // Protects the Reaction Time math!
+                // Recreate the timeout with ONLY the time they had left
+                trialTimeout = setTimeout(() => handleResponse(null, true), trialRemainingTime);
+            }
+
+        } else {
+            // --- PAUSE LOGIC ---
+            isPaused = true;
+            pauseTimestamp = performance.now();
+            
+            // 1. Stop the main progress bar
+            if (phaseTimer) clearInterval(phaseTimer);
+            
+            // 2. Stop the 3000ms timeout if waiting for a click
+            if (awaitingResponse) {
+                if (trialTimeout) clearTimeout(trialTimeout);
+                // Calculate exactly how much time they had left to answer
+                trialRemainingTime = Math.max(0, STIMULUS_TIMEOUT - (pauseTimestamp - trialStartTime));
+            }
+
+            // 3. Create a fullscreen overlay to hide the test (prevents cheating while paused)
+            pauseOverlay = document.createElement('div');
+            Object.assign(pauseOverlay.style, { 
+                position: 'fixed', top: '0', left: '0', width: '100vw', height: '100vh', 
+                background: 'rgba(255,255,255,0.98)', zIndex: '9999', 
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' 
+            });
+            pauseOverlay.innerHTML = `
+                <h2 style="color: #374151; font-family: 'Inter', sans-serif; margin-bottom: 20px;">Test Paused</h2>
+                <button class="button primary" onclick="toggleCognitivePause()" style="font-size: 1.2em; padding: 12px 30px;">Resume</button>
+            `;
+            document.body.appendChild(pauseOverlay);
+        }
+    };
+
+    // --- NEW: SKIP LOGIC ---
+    window.skipCognitivePhase = () => {
+        // 1. Destroy all running timers immediately
+        if (phaseTimer) clearInterval(phaseTimer);
+        if (trialTimeout) clearTimeout(trialTimeout);
+        
+        // 2. Clear the pause state (in case they click skip while paused)
+        if (isPaused) {
+            isPaused = false;
+            if (pauseOverlay) pauseOverlay.remove();
+        }
+
+        // 3. Advance the index
+        currentPhaseIdx++;
+
+        // 4. Route them to the next phase or end the test
+        if (currentPhaseIdx >= PHASES.length) {
+            endTest();
+        } else {
+            startPhase(currentPhaseIdx); 
+        }
+    };
+
     // --- Configuration ---
     const PHASE_TIME = 150 * 1000;       // Real test duration (2.5 mins)
     const BREAK_TIME = 30 * 1000;        // Real break duration (30 secs)
@@ -56,6 +135,9 @@ function mountCognitiveTest(container, onComplete, blockIdx, participantId) {
     let currentPhaseIdx = 0, phaseStartTime = 0, trialStartTime = 0, trialResults = [];
     let awaitingResponse = false, trialTimeout = null, phaseTimer = null, lastAxcptCue = null;
 
+    let isPaused = false, pauseTimestamp = 0, pauseOverlay = null;
+    let trialRemainingTime = 0, resumePendingTrial = false;
+
     function showInstructions() {
         container.innerHTML = `
             <div class="cognitive-test-container">
@@ -83,11 +165,14 @@ function mountCognitiveTest(container, onComplete, blockIdx, participantId) {
     }
 
     function renderTestUI(phase) {
-        // Show a yellow practice badge if it's a practice round
         const badgeHTML = phase.isPractice ? `<div class="practice-badge">PRACTICE MODE (NOT SCORED)</div>` : '';
+        const pauseBtn = `<button onclick="toggleCognitivePause()" style="position: absolute; top: 15px; right: 20px; background: #f3f4f6; border: 1px solid #d1d5db; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-weight: 600; color: #374151; z-index: 10;">⏸ Pause</button>`;
+        const skipBtn = `<button onclick="skipCognitivePhase()" style="position: absolute; top: 15px; right: 105px; background: #fee2e2; border: 1px solid #fca5a5; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-weight: 600; color: #991b1b; z-index: 10;">⏭ Skip</button>`;
 
         container.innerHTML = `
-            <div class="cognitive-test-container">
+            <div class="cognitive-test-container" style="position: relative; width: 100%;">
+                ${skipBtn}
+                ${pauseBtn}
                 ${badgeHTML}
                 <h3>${phase.label}</h3>
                 <div class="cognitive-progbar-outer"><div id="cognitive-prog-bar"></div></div>
@@ -105,8 +190,13 @@ function mountCognitiveTest(container, onComplete, blockIdx, participantId) {
     }
 
     function renderBreakUI(phase) {
+        const pauseBtn = `<button onclick="toggleCognitivePause()" style="position: absolute; top: 15px; right: 20px; background: #f3f4f6; border: 1px solid #d1d5db; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-weight: 600; color: #374151; z-index: 10;">⏸ Pause</button>`;
+        const skipBtn = `<button onclick="skipCognitivePhase()" style="position: absolute; top: 15px; right: 105px; background: #fee2e2; border: 1px solid #fca5a5; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-weight: 600; color: #991b1b; z-index: 10;">⏭ Skip</button>`;
+        
         container.innerHTML = `
-            <div class="cognitive-test-container">
+            <div class="cognitive-test-container" style="position: relative; width: 100%;">
+                ${skipBtn}
+                ${pauseBtn}
                 <h3>${phase.label}</h3>
                 <div id="break-timer" style="font-size: 5em; font-weight: 800;">${phase.duration / 1000}</div>
                 <p>${phase.isPractice ? 'The real test is about to begin. Your data will now be recorded.' : 'Relax your eyes before the next part begins.'}</p>
@@ -136,6 +226,10 @@ function mountCognitiveTest(container, onComplete, blockIdx, participantId) {
     }
 
     function nextTrial() {
+        if (isPaused) {
+            resumePendingTrial = true;
+            return;
+        }
         const phase = PHASES[currentPhaseIdx];
         const stimDiv = document.getElementById('cog-stimulus');
         const btnArea = document.getElementById('cog-btns');
@@ -157,10 +251,31 @@ function mountCognitiveTest(container, onComplete, blockIdx, participantId) {
             // AX-CPT Logic
             let char;
             const rand = Math.random();
-            if (lastAxcptCue === 'A') { char = rand < 0.7 ? 'X' : 'Y'; }
-            else { char = rand < 0.4 ? 'A' : AXCPT_LETTERS[Math.floor(Math.random() * AXCPT_LETTERS.length)]; }
+            
+            if (lastAxcptCue === 'A') { 
+                // 1. If previous was 'A': 70% chance of 'X' (Target), 30% chance of 'Y' (Distractor)
+                char = rand < 0.7 ? 'X' : 'Y'; 
+            } 
+            else if (lastAxcptCue === 'X') {
+                // 2. NEW ANTI-SPAM RULE: If previous was 'X', force a break. Never show X twice.
+                // 50% chance to start a new sequence with 'A', 50% chance for a distractor.
+                char = rand < 0.5 ? 'A' : 'C';
+            }
+            else { 
+                // 3. If previous was any other letter
+                if (rand < 0.35) {
+                    char = 'A'; // 35% chance to show 'A' to set up the next cue
+                } else if (rand < 0.70) {
+                    char = 'X'; // 35% chance to throw the 'X' trap!
+                } else {
+                    // 4. NEW SAFE-RANDOM RULE: explicitly exclude 'A' and 'X' from the random pool
+                    const distractors = ['B', 'D', 'E', 'F', 'G', 'H', 'K', 'M', 'P', 'R', 'Y', 'Z'];
+                    char = distractors[Math.floor(Math.random() * distractors.length)];
+                }
+            }
 
             const isMatch = (lastAxcptCue === 'A' && char === 'X');
+            
             stimDiv.innerHTML = `<div class="axcpt-box">${char}</div>`;
             stimDiv.style.color = "#1f2937";
             stimDiv.dataset.correct = isMatch ? 'M' : 'N';
@@ -171,7 +286,7 @@ function mountCognitiveTest(container, onComplete, blockIdx, participantId) {
         trialTimeout = setTimeout(() => handleResponse(null, true), STIMULUS_TIMEOUT);
     }
 
-window.handleResponse = (response, isTimeout = false) => {
+    window.handleResponse = (response, isTimeout = false) => {
         if (!awaitingResponse) return;
         awaitingResponse = false;
         if (trialTimeout) clearTimeout(trialTimeout);
@@ -213,7 +328,7 @@ window.handleResponse = (response, isTimeout = false) => {
         onComplete({ results: trialResults });
     }
 
-function downloadCSV() {
+    function downloadCSV() {
         if (trialResults.length === 0) return;
         
         // 1. Standardized Research Headers
