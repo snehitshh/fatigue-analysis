@@ -94,27 +94,30 @@ function showDemographics() {
 
 // 2. Experiment Setup (Display Random Fatigue + Choose Primary Task)
 // 2. Experiment Setup (Fully Randomized Assignment)
+// 2. Experiment Setup (Fully Randomized Assignment with Remote Override)
 function showExperimentSetup() {
     currentStep = 'experiment-setup';
     updateProgress();
     
-    // --- NEW: FULLY RANDOM ASSIGNMENT LOGIC ---
-    // Define the 4 exact combinations (25% probability each)
-    const conditions = [
-        { primary: 'fitts', fatigue: 'cognitive' },
-        { primary: 'typing', fatigue: 'cognitive' },
-        { primary: 'fitts', fatigue: 'physical' },
-        { primary: 'typing', fatigue: 'physical' }
-    ];
+    // --- MODIFIED: Only randomize if they haven't been assigned yet ---
+    if (!sessionBaseTask || !sessionFatigueTrack) {
+        // Define the 4 exact combinations (25% probability each)
+        const conditions = [
+            { primary: 'fitts', fatigue: 'cognitive' },
+            { primary: 'typing', fatigue: 'cognitive' },
+            { primary: 'fitts', fatigue: 'physical' },
+            { primary: 'typing', fatigue: 'physical' }
+        ];
 
-    // Pick one randomly
-    const assignedCondition = conditions[Math.floor(Math.random() * conditions.length)];
+        // Pick one randomly
+        const assignedCondition = conditions[Math.floor(Math.random() * conditions.length)];
 
-    // Assign to your global session variables
-    sessionBaseTask = assignedCondition.primary;
-    sessionFatigueTrack = assignedCondition.fatigue;
+        // Assign to your global session variables
+        sessionBaseTask = assignedCondition.primary;
+        sessionFatigueTrack = assignedCondition.fatigue;
+    }
     
-    // Prepare the text based on what the randomizer chose
+    // Prepare the text based on the current track
     const primaryTitle = sessionBaseTask === 'fitts' ? "Fitts' Tapping Task" : "Typing Task";
     const primaryDesc = sessionBaseTask === 'fitts' 
         ? 'You will click moving targets to measure spatial motor skills.' 
@@ -125,7 +128,28 @@ function showExperimentSetup() {
         ? 'You will complete Stroop & AX-CPT tests.' 
         : 'You will complete physical fatigue induction.';
 
-    // Render the read-only UI (No clicking required, just review and continue)
+    // --- NEW: Add override button ONLY if physical track is active ---
+    let switchOverrideHTML = '';
+    if (sessionFatigueTrack === 'physical') {
+        switchOverrideHTML = `
+            <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #bbf7d0;">
+                <p style="font-size: 0.85em; color: #dc2626; margin-bottom: 8px; font-weight: 600;">
+                    Unable to do physical exercise remotely?
+                </p>
+                <button class="button secondary" onclick="switchToCognitiveOverride()" style="padding: 8px 15px; font-size: 0.9em; margin: 0; min-width: auto;">
+                    Switch to Cognitive Test
+                </button>
+            </div>
+        `;
+    }
+
+    // Attach the override function to the global window object so the inline button can trigger it
+    window.switchToCognitiveOverride = function() {
+        sessionFatigueTrack = 'cognitive';
+        showExperimentSetup(); // Re-render the UI immediately with the new cognitive track
+    };
+
+    // Render the UI
     mainContent.innerHTML = `
         <div class="test-selection-container" style="max-width: 800px; margin: 0 auto; padding-top: 20px;">
             <div class="block-title" style="text-align: center;">Experiment Setup</div>
@@ -133,17 +157,18 @@ function showExperimentSetup() {
                 You have been randomly assigned to the following testing protocol to prevent selection bias.
             </p>
             
-            <div style="display: flex; gap: 20px; margin-bottom: 40px;">
-                <div style="flex: 1; background: #eff6ff; border: 2px solid #2563eb; padding: 25px; border-radius: 8px; text-align: center;">
+            <div style="display: flex; gap: 20px; margin-bottom: 40px; flex-wrap: wrap;">
+                <div style="flex: 1; min-width: 250px; background: #eff6ff; border: 2px solid #2563eb; padding: 25px; border-radius: 8px; text-align: center;">
                     <h3 style="margin-top: 0; color: #4b5563; font-size: 1em; text-transform: uppercase; letter-spacing: 1px;">Primary Task</h3>
                     <h2 style="color: #1e3a8a; margin: 10px 0; font-size: 1.5em;">${primaryTitle}</h2>
                     <p style="color: #6b7280; margin: 0; font-size: 1em;">${primaryDesc}</p>
                 </div>
 
-                <div style="flex: 1; background: #f0fdf4; border: 2px solid #16a34a; padding: 25px; border-radius: 8px; text-align: center;">
+                <div style="flex: 1; min-width: 250px; background: #f0fdf4; border: 2px solid #16a34a; padding: 25px; border-radius: 8px; text-align: center;">
                     <h3 style="margin-top: 0; color: #4b5563; font-size: 1em; text-transform: uppercase; letter-spacing: 1px;">Fatigue Track</h3>
                     <h2 style="color: #14532d; margin: 10px 0; font-size: 1.5em;">${fatigueTitle}</h2>
                     <p style="color: #6b7280; margin: 0; font-size: 1em;">${fatigueDesc}</p>
+                    ${switchOverrideHTML}
                 </div>
             </div>
 
