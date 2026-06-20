@@ -1,6 +1,9 @@
-function mountTypingTest(container, onComplete, participantId, blockIdx) {
-    let completedMinutes = 0;
-    const TOTAL_MINUTES_NEEDED = 10; 
+function mountTypingTest(container, onComplete, participantId, blockIdx, options) {
+    // options.startMinute resumes a refreshed session from the minute it reached;
+    // options.onMinuteComplete(completedMinutes) reports progress for persistence.
+    const resumeOptions = options || {};
+    let completedMinutes = Number(resumeOptions.startMinute) || 0;
+    const TOTAL_MINUTES_NEEDED = 10;
     const TEST_DURATION = 60 * 1000; // 60 seconds
     
     let testStartTime = 0;
@@ -14,6 +17,12 @@ function mountTypingTest(container, onComplete, participantId, blockIdx) {
     let currentSentenceIndex = 0;
     let currentTestSentences = [];
     let testIsActive = false;
+
+    // Detect whether the participant is on an on-screen (virtual) keyboard so the
+    // analysis can keep mobile and physical-keyboard typing comparable separately.
+    const isVirtualKeyboard = (navigator.maxTouchPoints > 0)
+        && (window.matchMedia?.('(pointer: coarse)').matches || false);
+    const keyboardType = isVirtualKeyboard ? 'virtual' : 'physical';
 
     // Fallback corpus just in case
     let allCorpusSentences = [
@@ -61,7 +70,7 @@ function mountTypingTest(container, onComplete, participantId, blockIdx) {
                 </div>
                 
                 <div id="typing-progbar" style="width: 100%; height: 10px; background: #e5e7eb; border-radius: 5px; margin-bottom: 20px;">
-                    <div id="typing-prog" style="height: 100%; width: 0%; background: #2563eb; border-radius: 5px;"></div>
+                    <div id="typing-prog" style="height: 100%; width: 0%; background: #2563eb; border-radius: 5px; transition: width 0.2s linear;"></div>
                 </div>
 
                 <div id="typing-text-display" style="background: #f3f4f6; padding: 20px; border-radius: 8px; font-size: 1.3em; color: #374151; margin-bottom: 10px; line-height: 1.5; user-select: none;">
@@ -70,13 +79,21 @@ function mountTypingTest(container, onComplete, participantId, blockIdx) {
 
                 <div id="typing-status" style="height: 20px; margin-bottom: 10px; font-weight: 500; font-size: 0.9em;"></div>
 
-                <textarea id="typing-input" placeholder="Type here and press ENTER..." style="width: 100%; height: 120px; padding: 15px; font-size: 1.2em; border: 2px solid #d1d5db; border-radius: 8px; resize: none;"></textarea>
+                <textarea id="typing-input" placeholder="Type here and press ENTER..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" inputmode="text" style="width: 100%; height: 120px; padding: 15px; font-size: 1.2em; border: 2px solid #d1d5db; border-radius: 8px; resize: none;"></textarea>
             </div>`;
 
         const inputField = document.getElementById('typing-input');
         testIsActive = true;
         displayNextSentence();
         inputField.focus();
+
+        // On touch devices the on-screen keyboard can cover the input. Scroll it
+        // back into view when it gains focus so the sentence and field stay visible.
+        if (isVirtualKeyboard) {
+            inputField.addEventListener('focus', () => {
+                setTimeout(() => inputField.scrollIntoView({ block: 'center', behavior: 'smooth' }), 250);
+            });
+        }
 
         // Handle ENTER key to move to the next sentence
         inputField.addEventListener('keydown', (e) => {
@@ -100,7 +117,7 @@ function mountTypingTest(container, onComplete, participantId, blockIdx) {
             if (e.key === 'Backspace') backspaceCounter++;
         });
 
-        // Handle the 60-second Timer
+        // Handle the 60-second Timer + live highlighting.
         inputField.addEventListener('input', (e) => {
             if (testStartTime === 0) {
                 testStartTime = performance.now();
@@ -113,6 +130,9 @@ function mountTypingTest(container, onComplete, participantId, blockIdx) {
                     }
                 }, 100);
             }
+            // Display-only: never reads/writes timing state, so it cannot affect
+            // keystroke metrics (those are captured in the keydown handler above).
+            renderHighlight();
         });
         
         // Lock cursor to the end
@@ -127,12 +147,37 @@ function mountTypingTest(container, onComplete, participantId, blockIdx) {
             currentTestSentences = [...allCorpusSentences].sort(() => 0.5 - Math.random());
             currentSentenceIndex = 0;
         }
-        document.getElementById('typing-text-display').innerText = currentTestSentences[currentSentenceIndex];
         document.getElementById('typing-input').value = '';
-        
+        renderHighlight(); // shows the new sentence with all characters untyped
+
         currentKeyTimestamps = [];
         backspaceCounter = 0;
         sentenceStartTime = performance.now();
+    }
+
+    function escapeChar(ch) {
+        if (ch === '&') return '&amp;';
+        if (ch === '<') return '&lt;';
+        if (ch === '>') return '&gt;';
+        return ch;
+    }
+
+    // Renders the target sentence with each character coloured by how the
+    // participant has typed so far (correct / wrong / not-yet-typed). Read-only:
+    // it inspects the input value but never changes it or any timing state.
+    function renderHighlight() {
+        const display = document.getElementById('typing-text-display');
+        const input = document.getElementById('typing-input');
+        if (!display) return;
+        const target = currentTestSentences[currentSentenceIndex] || '';
+        const typed = input ? input.value : '';
+        let html = '';
+        for (let i = 0; i < target.length; i++) {
+            let cls = 'tc-untyped';
+            if (i < typed.length) cls = (typed[i] === target[i]) ? 'tc-correct' : 'tc-wrong';
+            html += `<span class="${cls}">${escapeChar(target[i])}</span>`;
+        }
+        display.innerHTML = html;
     }
 
 function submitSentence() {
@@ -142,9 +187,8 @@ function submitSentence() {
 
         if (typedText === "") {
             const status = document.getElementById('typing-status');
-            status.innerText = "Please type something before pressing Enter!";
-            status.style.color = "#dc2626";
-            setTimeout(() => { status.innerText = ""; }, 2000);
+            status.innerHTML = '<span class="app-toast warning">Please type something before pressing Enter</span>';
+            setTimeout(() => { status.innerHTML = ""; }, 2000);
             return;
         }
 
@@ -153,11 +197,13 @@ function submitSentence() {
         // --- NEW: Calculate exact elapsed time within the 1-minute block ---
         const elapsedTimeInBlock = Math.round(performance.now() - testStartTime);
 
-        logs.push({
+        const minuteNumber = completedMinutes + 1;
+        const sentenceNumber = currentSentenceIndex + 1;
+        const trialRecord = {
             participantId: participantId,
             block: blockIdx || 1,
-            minuteSet: completedMinutes + 1,
-            sentenceNumber: currentSentenceIndex + 1,
+            minuteSet: minuteNumber,
+            sentenceNumber,
             originalSentence: originalSentence,
             typedText: typedText,
             wpm: metrics.wpm,
@@ -169,15 +215,33 @@ function submitSentence() {
             durationMs: Math.round(performance.now() - sentenceStartTime),
             elapsedTimeInBlock_ms: elapsedTimeInBlock, // FATIGUE METRIC
             timestampReadable: new Date().toISOString()
+        };
+
+        logs.push(trialRecord);
+        window.fatigueBackend?.saveTypingTrial?.({
+            blockNumber: blockIdx || 1,
+            minuteNumber,
+            sentenceNumber,
+            originalSentence,
+            typedText,
+            wpm: metrics.wpm,
+            errorDistance: metrics.errorDistance,
+            errorPercentage: metrics.errorPercentage,
+            iki: metrics.iki,
+            kspc: metrics.kspc,
+            backspaceCount: metrics.backspaceCount,
+            durationMs: trialRecord.durationMs,
+            elapsedTimeInBlockMs: elapsedTimeInBlock,
+            keyboardType,
+            inputMethod: keyboardType
         });
 
         currentSentenceIndex++;
         
         const status = document.getElementById('typing-status');
-        status.innerText = "✓ Sentence Saved!";
-        status.style.color = "#16a34a";
-        setTimeout(() => { if(status.innerText.includes("Saved")) status.innerText = ""; }, 1000);
-        
+        status.innerHTML = '<span class="app-toast success">✓ Sentence saved</span>';
+        setTimeout(() => { if (status.textContent.includes("saved")) status.innerHTML = ""; }, 1000);
+
         displayNextSentence();
     }
 
@@ -201,8 +265,11 @@ function submitSentence() {
         }
 
         completedMinutes++;
+        if (typeof resumeOptions.onMinuteComplete === 'function') {
+            resumeOptions.onMinuteComplete(completedMinutes);
+        }
         downloadCSV(logs, `typing_block_${blockIdx || 1}_minute_${completedMinutes}`);
-        logs = []; 
+        logs = [];
 
         if (completedMinutes < TOTAL_MINUTES_NEEDED) {
             showNextSetScreen();
@@ -212,10 +279,13 @@ function submitSentence() {
     }
 
     function showNextSetScreen() {
+        const saveMessage = window.fatigueBackend?.isDatabaseMode?.()
+            ? 'Data saved to Supabase. Take a breath and shake out your hands.'
+            : 'Data downloaded. Take a breath and shake out your hands.';
         container.innerHTML = `
             <div class="fitts-results" style="text-align: center;">
                 <div class="block-title">Minute ${completedMinutes}/${TOTAL_MINUTES_NEEDED} Complete</div>
-                <p>Data downloaded. Take a breath and shake out your hands.</p>
+                <p>${saveMessage}</p>
                 <button class="button primary" onclick="startNextMinute()">Start Next Minute</button>
             </div>`;
         window.startNextMinute = startTest;
@@ -233,6 +303,7 @@ function submitSentence() {
     }
 
 function downloadCSV(data, fileName) {
+        if (window.fatigueBackend?.isDatabaseMode?.()) return;
         if (!data.length) return;
         
         // --- NEW: Refined Research Headers ---

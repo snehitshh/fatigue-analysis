@@ -1,7 +1,11 @@
-function mountFittsTest(container, onComplete, participantId) {
+function mountFittsTest(container, onComplete, participantId, blockIdx, options) {
     // --- Test Parameters ---
-    let completedMinutes = 0;
-    const TOTAL_MINUTES_NEEDED = 10; 
+    // options.startMinute lets a resumed session continue from the minute it
+    // reached; options.onMinuteComplete(completedMinutes) reports progress so the
+    // orchestrator can persist it for refresh recovery.
+    const resumeOptions = options || {};
+    let completedMinutes = Number(resumeOptions.startMinute) || 0;
+    const TOTAL_MINUTES_NEEDED = 10;
     let animationActive = false;
     let trialActive = false; 
     
@@ -9,7 +13,19 @@ function mountFittsTest(container, onComplete, participantId) {
     const TEST_DURATION = 60 * 1000; 
     let testStartTime = 0;
     
-    const ARENA_W = 700, ARENA_H = 500;
+    // --- Responsive arena (measurement-safe) ---
+    // The arena is a square sized from the real rendered space available on the
+    // device. Target sizes and distances below are defined against BASE_ARENA and
+    // scaled by (arenaSize / BASE_ARENA). Because the Fitts index of difficulty
+    // (log2(distance / size + 1)) is scale-invariant, the task difficulty stays
+    // identical across devices while the rendered pixels (which we record) differ.
+    const BASE_ARENA = 500;   // reference square the LEVELS were authored against
+    const MAX_ARENA = 600;    // never grow larger than this on big screens
+    const MIN_ARENA = 300;    // below this the test is not scientifically valid
+    let arenaSize = BASE_ARENA;
+    let arenaScale = 1;
+    let lastInputMethod = null; // 'mouse' | 'pen' | 'touch', captured per pointer
+
     const MAX_MISCLICKS = 3;
     const COLOR_TARGET = "#107046", COLOR_TARGET_BORDER = "#03422c";
     const DIALOG_TIMEOUT = 1000;
@@ -21,6 +37,7 @@ function mountFittsTest(container, onComplete, participantId) {
     let animationFrame = null;
     let globalTimer = null;
 
+    // Base geometry (authored against BASE_ARENA); scaled to the real arena at runtime.
     const LEVELS = {
         1: { size: 55, distance: 320 },
         2: { size: 45, distance: 280 },
@@ -28,6 +45,20 @@ function mountFittsTest(container, onComplete, participantId) {
         4: { size: 28, distance: 200 },
         5: { size: 22, distance: 160 }
     };
+
+    // Measure the real space available and pick a square arena that fits the device.
+    function computeArenaSize() {
+        const availWidth = (container && container.clientWidth) || window.innerWidth || BASE_ARENA;
+        const availHeight = window.innerHeight || BASE_ARENA;
+        // Reserve vertical room for the feedback line, progress bar, and controls.
+        const usableHeight = availHeight - 210;
+        const raw = Math.min(availWidth - 24, usableHeight, MAX_ARENA);
+        return Math.floor(raw);
+    }
+
+    function deviceIsBigEnough() {
+        return computeArenaSize() >= MIN_ARENA;
+    }
 
     let greenTargetsClicked = 0;
     let misclickCount = 0;
@@ -51,6 +82,12 @@ function mountFittsTest(container, onComplete, participantId) {
     showInstructions();
 
     function showInstructions() {
+        // Guard: the arena must render large enough for valid measurement.
+        if (!deviceIsBigEnough()) {
+            showTooSmallWarning();
+            return;
+        }
+
         container.innerHTML = `
             <div class="fitts-instructions">
                 <div class="block-title">Fatigue Induction Test (Minute ${completedMinutes + 1})</div>
@@ -63,11 +100,36 @@ function mountFittsTest(container, onComplete, participantId) {
         window.startFittsTest = startTest;
     }
 
+    // Shown when the device/viewport is too small for a valid Fitts measurement.
+    function showTooSmallWarning() {
+        const portrait = window.innerHeight > window.innerWidth;
+        container.innerHTML = `
+            <div class="fitts-instructions device-warning">
+                <div class="block-title">Screen Too Small for This Test</div>
+                <div class="instruction-content">
+                    <p>The tapping test needs a larger area to measure your movements accurately.</p>
+                    <p>${portrait
+                        ? 'Please <strong>rotate your device to landscape</strong> or use a larger screen, then tap retry.'
+                        : 'Please use a device with a larger screen (tablet, laptop, or desktop), then tap retry.'}</p>
+                    <button class="button primary" onclick="retryFittsSize()">Retry</button>
+                </div>
+            </div>`;
+        window.retryFittsSize = showInstructions;
+    }
+
 function startTest() {
         testStartTime = 0; // Wait for first click
         trialIdx = 0;
         trialData = [];
         misclickCount = 0;
+
+        // Lock the arena size for the whole minute so a mid-test resize/rotate
+        // can never shift target coordinates and corrupt the measurement.
+        arenaSize = Math.max(MIN_ARENA, computeArenaSize());
+        arenaScale = arenaSize / BASE_ARENA;
+        // Block page scrolling/zooming while a measurement is active.
+        document.body.classList.add('fitts-active');
+
         showTestInterface();
 
         globalTimer = setInterval(() => {
@@ -91,17 +153,22 @@ function startTest() {
             <div class="fitts-test-container">
                 <div id="fitts-feedback">Time left: 60s</div>
                 <div id="fitts-progbar"><div id="fitts-prog" style="width: 0%"></div></div>
-                <div id="fitts-arena" style="position:relative; width:${ARENA_W}px; height:${ARENA_H}px; border:1px solid #ccc; margin:auto; background: #fff; cursor: crosshair;"></div>
+                <div id="fitts-arena" style="position:relative; width:${arenaSize}px; height:${arenaSize}px; max-width:100%; border:1px solid #ccc; margin:auto; background: #fff; cursor: crosshair; touch-action:none; user-select:none;"></div>
                 <div class="test-controls">
                     <button id="pause-btn" class="button secondary" onclick="togglePause()">Pause</button>
                     <div class="trial-info"><span id="misclick-counter">Misclicks: 0/${MAX_MISCLICKS}</span></div>
                 </div>
             </div>`;
         window.togglePause = togglePause;
-        document.getElementById('fitts-arena').addEventListener('click', handleArenaClick);
+        // pointerdown (not click) so touch input is captured immediately, with no
+        // 300ms delay, and so we can record the input method (mouse/pen/touch).
+        document.getElementById('fitts-arena').addEventListener('pointerdown', handleArenaClick);
     }
 
     function handleArenaClick(event) {
+        if (event.pointerType) lastInputMethod = event.pointerType;
+        // Ignore non-primary mouse buttons (right/middle click).
+        if (event.button && event.button !== 0) return;
         if (paused || !currentTrial || !trialActive) return;
 
         const rect = event.currentTarget.getBoundingClientRect();
@@ -136,6 +203,11 @@ function startTest() {
             greenTargetsClicked++;
             currentTrial.currentIndexInSequence++;
 
+            // Decorative feedback only — fired AFTER the hit is fully recorded and
+            // drawn on a separate fixed layer, so it never affects target size,
+            // position, or timing.
+            spawnFittsRipple(event.clientX, event.clientY, 'hit');
+
             if (currentTrial.currentIndexInSequence < currentTrial.sequence.length) {
                 const nextIdx = currentTrial.sequence[currentTrial.currentIndexInSequence];
                 currentTrial.targets[nextIdx].isHighlighted = true;
@@ -148,11 +220,24 @@ function startTest() {
             if (testStartTime > 0) {
                 misclickCount++;
                 updateMisclickCounter();
+                spawnFittsRipple(event.clientX, event.clientY, 'miss'); // after the misclick is counted
                 if (misclickCount > MAX_MISCLICKS) {
                     handleHardStop("Limit Exceeded!");
                 }
             }
         }
+    }
+
+    // Brief expanding ring at the pointer location. Appended to document.body with
+    // fixed positioning and pointer-events:none, so it is independent of arena
+    // re-renders and can never intercept a click or change the measured geometry.
+    function spawnFittsRipple(clientX, clientY, kind) {
+        const ripple = document.createElement('div');
+        ripple.className = `fitts-ripple ${kind}`;
+        ripple.style.left = `${clientX}px`;
+        ripple.style.top = `${clientY}px`;
+        document.body.appendChild(ripple);
+        setTimeout(() => ripple.remove(), 550);
     }
 
     function renderCircularArena() {
@@ -189,14 +274,18 @@ function startTest() {
         
         const randomLevel = Math.floor(Math.random() * 5) + 1;
         const config = LEVELS[randomLevel];
+        // Scale the authored geometry to the real rendered arena. Ratio (and thus
+        // the Fitts index of difficulty) is preserved; only absolute pixels change.
+        const renderedSize = config.size * arenaScale;
+        const renderedDistance = config.distance * arenaScale;
         const numTargets = 11;
-        const centerX = ARENA_W / 2, centerY = ARENA_H / 2;
-        const circleRadius = config.distance / 2;
+        const centerX = arenaSize / 2, centerY = arenaSize / 2;
+        const circleRadius = renderedDistance / 2;
         const targets = [];
 
         for (let i = 0; i < numTargets; i++) {
             const angle = (i * (360 / numTargets) - 90) * (Math.PI / 180);
-            targets.push({ id: i, x: centerX + Math.cos(angle) * circleRadius, y: centerY + Math.sin(angle) * circleRadius, radius: config.size / 2, isHighlighted: false });
+            targets.push({ id: i, x: centerX + Math.cos(angle) * circleRadius, y: centerY + Math.sin(angle) * circleRadius, radius: renderedSize / 2, isHighlighted: false });
         }
 
         // --- Smart random jumps with short-term memory (Crash-Proof) ---
@@ -230,13 +319,15 @@ function startTest() {
 
         targets[sequence[0]].isHighlighted = true;
         
-        currentTrial = { 
-            targets, 
-            sequence, 
-            currentIndexInSequence: 0, 
-            level: randomLevel, 
-            targetSize: config.size, 
-            targetDistance: config.distance,
+        currentTrial = {
+            targets,
+            sequence,
+            currentIndexInSequence: 0,
+            level: randomLevel,
+            // Rendered (actual) pixel geometry — keeps the Fitts ID math consistent
+            // with the coordinates the participant actually saw and clicked.
+            targetSize: renderedSize,
+            targetDistance: renderedDistance,
             sumOfID: 0,
             lastTarget: null
         };
@@ -308,27 +399,52 @@ function startTest() {
         // 3. Exact Elapsed Time in Block (Tracks micro-fatigue within the 60s)
         const elapsedTimeInBlock = Math.round(performance.now() - testStartTime);
 
-        trialData.push({ 
-            participantId, 
-            block: completedMinutes + 1, // Dynamically tags which minute they are in
-            trialInBlock: trialIdx + 1, 
-            difficultyLevel: currentTrial.level, 
-            indexOfDifficulty: avgID, 
+        const minuteNumber = completedMinutes + 1;
+        const trialInMinute = trialIdx + 1;
+        const trialRecord = {
+            participantId,
+            block: minuteNumber, // Dynamically tags which minute they are in
+            trialInBlock: trialInMinute,
+            difficultyLevel: currentTrial.level,
+            indexOfDifficulty: avgID,
             targetsClicked: clickedCount,
-            misclicks: misclickCount, 
-            totalTime_ms: time.toFixed(2), 
-            throughput_bps: throughput, 
+            misclicks: misclickCount,
+            totalTime_ms: time.toFixed(2),
+            throughput_bps: throughput,
             avgMovementTime_ms: avgMovementTime,       // NEW
             errorRate_percent: errorRate,              // NEW
             elapsedTimeInBlock_ms: elapsedTimeInBlock, // NEW
-            success, 
+            success,
             timestampReadable: new Date().toISOString() // NEW: Clean, readable timestamp
+        };
+
+        trialData.push(trialRecord);
+        window.fatigueBackend?.saveFittsTrial?.({
+            blockNumber: blockIdx || 1,
+            minuteNumber,
+            trialInMinute,
+            difficultyLevel: currentTrial.level,
+            targetSizePx: Number(currentTrial.targetSize.toFixed(2)),
+            targetDistancePx: Number(currentTrial.targetDistance.toFixed(2)),
+            renderedArenaWidthPx: arenaSize,
+            renderedArenaHeightPx: arenaSize,
+            inputMethod: lastInputMethod,
+            avgIndexOfDifficulty: avgID,
+            targetsClicked: clickedCount,
+            misclicks: misclickCount,
+            totalTimeMs: Number(time.toFixed(2)),
+            throughputBps: throughput,
+            avgMovementTimeMs: avgMovementTime,
+            errorRatePercent: errorRate,
+            elapsedTimeInBlockMs: elapsedTimeInBlock,
+            success
         });
     }
 
     function endTest() {
         animationActive = false;
         trialActive = false;
+        document.body.classList.remove('fitts-active');
         if (globalTimer) { clearInterval(globalTimer); globalTimer = null; }
         if (animationFrame) { cancelAnimationFrame(animationFrame); animationFrame = null; }
         
@@ -342,8 +458,11 @@ function startTest() {
         }
 
         completedMinutes++;
+        if (typeof resumeOptions.onMinuteComplete === 'function') {
+            resumeOptions.onMinuteComplete(completedMinutes);
+        }
         downloadCSV(trialData, `block_1_minute_${completedMinutes}`);
-        trialData = []; 
+        trialData = [];
 
         if (completedMinutes < TOTAL_MINUTES_NEEDED) {
             showNextSetScreen();
@@ -353,10 +472,13 @@ function startTest() {
     }
 
     function showNextSetScreen() {
+        const saveMessage = window.fatigueBackend?.isDatabaseMode?.()
+            ? 'Data saved to Supabase. Take a breath.'
+            : 'Data downloaded. Take a breath.';
         container.innerHTML = `
             <div class="fitts-results">
                 <div class="block-title">Minute ${completedMinutes}/${TOTAL_MINUTES_NEEDED} Complete</div>
-                <p>Data downloaded. Take a breath.</p>
+                <p>${saveMessage}</p>
                 <button class="button primary" onclick="startNextMinute()">Start Next Minute</button>
             </div>`;
         window.startNextMinute = () => {
@@ -377,6 +499,7 @@ function startTest() {
     }
 
 function downloadCSV(data, fileName) {
+        if (window.fatigueBackend?.isDatabaseMode?.()) return;
         if (!data.length) return;
         
         // --- NEW: Refined Research Headers ---
@@ -425,8 +548,11 @@ function downloadCSV(data, fileName) {
             if (animationFrame) cancelAnimationFrame(animationFrame);
             const arena = document.getElementById('fitts-arena');
             pauseOverlay = document.createElement('div');
-            Object.assign(pauseOverlay.style, { position: 'absolute', top: '0', left: '0', width: '100%', height: '100%', background: 'rgba(255,255,255,0.9)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' });
-            pauseOverlay.innerHTML = `<button class="button primary" onclick="togglePause()">Resume</button>`;
+            pauseOverlay.className = 'fitts-pause-overlay';
+            Object.assign(pauseOverlay.style, { position: 'absolute', top: '0', left: '0', width: '100%', height: '100%', background: 'rgba(255,255,255,0.94)', zIndex: 1000, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' });
+            pauseOverlay.innerHTML = `
+                <div style="font-weight:700; color:#294c90; font-size:1.15em; margin-bottom:14px;">Test Paused</div>
+                <button class="button primary" onclick="togglePause()">Resume</button>`;
             arena.appendChild(pauseOverlay);
         }
     }

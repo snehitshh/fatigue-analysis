@@ -103,7 +103,11 @@ function mountCognitiveTest(container, onComplete, blockIdx, participantId) {
         const style = document.createElement('style');
         style.textContent = `
             .cognitive-test-container { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 60vh; text-align: center; font-family: 'Inter', sans-serif; }
-            .cognitive-stimulus { font-size: 6em; font-weight: 800; margin: 20px 0; min-height: 150px; display: flex; align-items: center; justify-content: center; position: relative; transition: opacity 0.1s; }
+            /* No transition on the stimulus: it must appear instantly so reaction
+               time is measured from true stimulus availability, not from the end
+               of a fade-in. Feedback (the popFade tick/cross below) animates only
+               after the response is captured. */
+            .cognitive-stimulus { font-size: 6em; font-weight: 800; margin: 20px 0; min-height: 150px; display: flex; align-items: center; justify-content: center; position: relative; }
             .feedback-overlay { position: absolute; font-size: 0.7em; top: -40px; pointer-events: none; animation: popFade 0.5s ease-out forwards; }
             @keyframes popFade { 0% { transform: scale(0.5); opacity: 0; } 50% { transform: scale(1.2); opacity: 1; } 100% { transform: scale(1); opacity: 0; transform: translateY(-30px); } }
             .axcpt-box { border: 5px solid #374151; padding: 20px; border-radius: 15px; background: #f9fafb; width: 120px; height: 120px; display: flex; align-items: center; justify-content: center; }
@@ -293,7 +297,9 @@ function mountCognitiveTest(container, onComplete, blockIdx, participantId) {
 
         const phase = PHASES[currentPhaseIdx];
         const stimDiv = document.getElementById('cog-stimulus');
-        const isCorrect = !isTimeout && (response === stimDiv.dataset.correct);
+        const correctResponse = stimDiv.dataset.correct;
+        const stimulusText = stimDiv.textContent.trim();
+        const isCorrect = !isTimeout && (response === correctResponse);
         
         // --- REAL-TIME FEEDBACK POP-UP ---
         const feedback = document.createElement('div');
@@ -305,16 +311,38 @@ function mountCognitiveTest(container, onComplete, blockIdx, participantId) {
         if (!phase.isPractice) {
             // Safely grab participantId (falls back to global session data if needed)
             const pid = typeof participantId !== 'undefined' ? participantId : (window.participantId || "UNKNOWN");
-            
-            trialResults.push({ 
+            const reactionTimeMs = isTimeout ? STIMULUS_TIMEOUT : (performance.now() - trialStartTime);
+            const elapsedTimeInPhaseMs = Math.round(performance.now() - phaseStartTime);
+            const trialRecord = {
                 participantId: pid,
                 block: blockIdx || 1,
                 testType: phase.type,   // e.g., 'stroop' or 'axcpt'
                 phase: phase.label,     // e.g., 'Stroop Test (Part 1)'
-                correct: isCorrect, 
-                rt: isTimeout ? STIMULUS_TIMEOUT : (performance.now() - trialStartTime),
-                elapsedTimeInBlock_ms: Math.round(performance.now() - phaseStartTime), // FATIGUE TRACKER
+                trialNumber: trialResults.length + 1,
+                stimulus: stimulusText,
+                correctResponse,
+                participantResponse: isTimeout ? null : response,
+                correct: isCorrect,
+                timeout: Boolean(isTimeout),
+                rt: reactionTimeMs,
+                elapsedTimeInBlock_ms: elapsedTimeInPhaseMs, // FATIGUE TRACKER
                 timestampReadable: new Date().toISOString() // READABLE TIME
+            };
+
+            trialResults.push(trialRecord);
+            window.fatigueBackend?.saveCognitiveTrial?.({
+                blockNumber: blockIdx || 1,
+                testType: phase.type,
+                phaseLabel: phase.label,
+                trialNumber: trialRecord.trialNumber,
+                stimulus: stimulusText,
+                correctResponse,
+                participantResponse: trialRecord.participantResponse,
+                correct: isCorrect,
+                isTimeout: Boolean(isTimeout),
+                reactionTimeMs,
+                elapsedTimeInPhaseMs,
+                elapsedTimeInBlockMs: elapsedTimeInPhaseMs
             });
         }
         
@@ -329,6 +357,7 @@ function mountCognitiveTest(container, onComplete, blockIdx, participantId) {
     }
 
     function downloadCSV() {
+        if (window.fatigueBackend?.isDatabaseMode?.()) return;
         if (trialResults.length === 0) return;
         
         // 1. Standardized Research Headers

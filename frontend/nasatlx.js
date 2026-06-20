@@ -63,7 +63,7 @@ function mountNASATLX(container, onComplete, blockIdx, participantId) {
                         </div>
                         
                         <div style="text-align: center; margin-top: 10px; font-weight: 600; color: #2563eb; font-size: 1.1em;">
-                            Selected: <span id="val-${q.id}">10</span>
+                            Selected: <span id="val-${q.id}" class="nasatlx-value-badge">10</span>
                         </div>
                     </div>
                 `).join('')}
@@ -86,6 +86,8 @@ function mountNASATLX(container, onComplete, blockIdx, participantId) {
                 border-radius: 4px;
                 background: #d1d5db;
                 outline: none;
+                /* Let horizontal drags move the slider instead of scrolling the page on touch. */
+                touch-action: none;
             }
             .nasatlx-slider::-webkit-slider-thumb {
                 -webkit-appearance: none;
@@ -111,6 +113,12 @@ function mountNASATLX(container, onComplete, blockIdx, participantId) {
                 cursor: pointer;
                 box-shadow: 0 2px 4px rgba(0,0,0,0.2);
             }
+            /* Larger touch targets on phones/tablets. */
+            @media (pointer: coarse) {
+                .nasatlx-slider { height: 14px; border-radius: 7px; }
+                .nasatlx-slider::-webkit-slider-thumb { width: 34px; height: 34px; }
+                .nasatlx-slider::-moz-range-thumb { width: 34px; height: 34px; }
+            }
         `;
         document.head.appendChild(style);
         window.__nasatlxSliderCSS = true;
@@ -122,14 +130,21 @@ function mountNASATLX(container, onComplete, blockIdx, participantId) {
     // Update the displayed value text instantly when the user drags the slider
     sliders.forEach(slider => {
         slider.addEventListener('input', (e) => {
-            const targetId = e.target.dataset.valTarget;
-            document.getElementById(targetId).textContent = e.target.value;
+            const badge = document.getElementById(e.target.dataset.valTarget);
+            if (!badge) return;
+            badge.textContent = e.target.value;
+            // Restart the bump animation on each change.
+            badge.classList.remove('bump');
+            void badge.offsetWidth; // force reflow so the animation replays
+            badge.classList.add('bump');
         });
     });
 
     // Individual CSV Download function
 // Individual CSV Download function
     function downloadNASACSV(data, pid, blockNum) {
+        if (window.fatigueBackend?.isDatabaseMode?.()) return;
+
         const headers = Object.keys(data).join(",");
         const values = Object.values(data).join(",");
         const csvContent = headers + "\n" + values;
