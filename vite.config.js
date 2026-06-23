@@ -40,7 +40,13 @@ export default defineConfig({
     envDir: process.cwd(),
     build: {
         outDir: "../dist",
-        emptyOutDir: true
+        emptyOutDir: true,
+        rollupOptions: {
+            input: {
+                main: resolve(process.cwd(), "frontend/index.html"),
+                admin: resolve(process.cwd(), "frontend/admin.html")
+            }
+        }
     },
     plugins: [copyLegacyAssets()]
 });

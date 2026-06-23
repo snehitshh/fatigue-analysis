@@ -785,7 +785,7 @@ comment on view public.research_nasa_tlx_export is 'Flat NASA-TLX export with ca
 comment on view public.research_physical_export is 'Flat physical fatigue export with candidate/session labels.';
 comment on view public.research_event_export is 'Flat session event export with candidate/session labels.';
 
--- Engagement / validation summary (scroll + app-switch per test; camera fields reserved).
+-- Engagement / validation summary (per test: app-switch / time-away + opt-in camera attention).
 create table if not exists public.engagement_summary (
     id uuid primary key default gen_random_uuid(),
     session_id uuid not null references public.sessions(id) on delete cascade,
@@ -862,6 +862,6 @@ revoke all on public.research_engagement_export from public;
 revoke all on public.research_engagement_export from anon;
 grant select on public.research_engagement_export to authenticated;
 
-comment on view public.research_engagement_export is 'Flat per-test engagement/validation export (scroll + app-switch; camera fields reserved).';
+comment on view public.research_engagement_export is 'Flat per-test engagement/validation export (app-switch / time-away + opt-in camera attention).';
 
 commit;

@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fatigue Lab — Research Console</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #081424; --panel: rgba(16,30,52,0.72); --border: rgba(120,170,235,0.24);
+            --text: #e6eefc; --muted: rgba(206,223,250,0.66); --cyan: #45c8e6; --blue: #3a8cff;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0; min-height: 100vh; font-family: 'Inter','Segoe UI',Arial,sans-serif;
+            color: var(--text);
+            background:
+                radial-gradient(120% 90% at 80% 10%, rgba(58,140,255,0.18), transparent 60%),
+                radial-gradient(120% 100% at 50% 30%, #16335a 0%, #0d2240 40%, #081424 100%);
+        }
+        .admin-header {
+            display: flex; align-items: center; justify-content: space-between; gap: 16px;
+            padding: 14px 26px; background: rgba(11,28,47,0.7);
+            -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+            border-bottom: 1px solid var(--border);
+        }
+        .brand { font-weight: 800; letter-spacing: 0.04em; }
+        .brand .accent { color: var(--cyan); }
+        .admin-actions { display: flex; align-items: center; gap: 12px; }
+        .admin-actions span { color: var(--muted); font-size: 0.86rem; }
+        main { max-width: 1200px; margin: 0 auto; padding: 26px 22px 60px; }
+        .card {
+            background: var(--panel); border: 1px solid var(--border); border-radius: 16px;
+            -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
+            box-shadow: 0 24px 60px rgba(2,10,24,0.45); padding: 22px;
+        }
+        h1 { font-size: 1.4rem; margin: 0 0 4px; }
+        h2 { font-size: 1.05rem; margin: 22px 0 10px; color: #f3f8ff; }
+        .muted { color: var(--muted); }
+        .kicker { color: var(--cyan); font-size: 0.72rem; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; }
+        label { display: block; font-weight: 600; margin: 14px 0 6px; color: #c2d8f6; }
+        input {
+            width: 100%; padding: 11px 13px; border-radius: 9px; font-size: 16px;
+            background: rgba(255,255,255,0.07); color: var(--text);
+            border: 1px solid var(--border); outline: none;
+        }
+        input:focus { border-color: var(--cyan); box-shadow: 0 0 0 3px rgba(69,200,230,0.16); }
+        button {
+            font-family: inherit; font-weight: 700; cursor: pointer; border-radius: 9px;
+            padding: 10px 18px; border: 1px solid transparent;
+            background: linear-gradient(135deg, var(--blue), var(--cyan)); color: #04121f;
+        }
+        button.ghost { background: rgba(255,255,255,0.06); color: var(--text); border-color: var(--border); }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .login-wrap { max-width: 420px; margin: 8vh auto 0; }
+        .error { color: #fca5a5; margin-top: 12px; font-size: 0.9rem; }
+        .notice { color: var(--muted); margin-top: 12px; font-size: 0.9rem; }
+        table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 0.9rem; }
+        th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid rgba(120,170,235,0.16); white-space: nowrap; }
+        th { color: var(--muted); font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.05em; }
+        tbody tr { cursor: pointer; }
+        tbody tr:hover { background: rgba(120,170,235,0.08); }
+        tbody tr.selected { background: rgba(69,200,230,0.12); }
+        .pill { padding: 2px 9px; border-radius: 999px; font-size: 0.74rem; font-weight: 700; background: rgba(120,170,235,0.14); color: var(--cyan); }
+        .good { color: #86efac; } .warn { color: #fca5a5; }
+        .stat-row { display: flex; flex-wrap: wrap; gap: 14px; margin: 10px 0 6px; }
+        .stat { background: rgba(255,255,255,0.05); border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px; min-width: 130px; }
+        .stat .n { font-size: 1.4rem; font-weight: 800; }
+        .stat .l { color: var(--muted); font-size: 0.76rem; }
+        .scroll-x { overflow-x: auto; }
+        @media (max-width: 600px) { main { padding: 16px 12px 40px; } .admin-header { padding: 12px 16px; } }
+    </style>
+</head>
+<body>
+    <header class="admin-header">
+        <div class="brand">FATIGUE LAB <span class="accent">· Research Console</span></div>
+        <div class="admin-actions" id="admin-actions" hidden>
+            <span id="admin-user"></span>
+            <button class="ghost" id="refresh-btn" type="button">Refresh</button>
+            <button class="ghost" id="logout-btn" type="button">Sign out</button>
+        </div>
+    </header>
+    <main id="admin-root"></main>
+    <script type="module" src="/src/admin/admin.js"></script>
+</body>
+</html>

@@ -86,6 +86,6 @@ revoke all on public.research_engagement_export from public;
 revoke all on public.research_engagement_export from anon;
 grant select on public.research_engagement_export to authenticated;
 
-comment on view public.research_engagement_export is 'Flat per-test engagement/validation export (scroll + app-switch; camera fields reserved).';
+comment on view public.research_engagement_export is 'Flat per-test engagement/validation export (app-switch / time-away + opt-in camera attention).';
 
 commit;

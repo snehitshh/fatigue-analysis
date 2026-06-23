@@ -131,3 +131,24 @@ backend/supabase/migrations/2026-06-20_add_engagement_summary.sql
 ```
 
 Researchers can read the flat data from the `research_engagement_export` view.
+
+## 9. Research Console (Admin Panel)
+
+A separate authenticated page, `admin.html`, lets researchers review results in a readable form: a list of sessions and, per session, the per-test engagement and camera-attention validation (attentive %, look-aways, app-switches, time away).
+
+It is built alongside the participant app. After `npm run dev` it is served at:
+
+```text
+http://127.0.0.1:5173/admin.html
+```
+
+After `npm run build` it is emitted as `dist/admin.html` (deploy it alongside `index.html`).
+
+To sign in you need a researcher account:
+
+1. In Supabase, go to **Authentication > Users** and **Add user** (email + password).
+2. Copy that user's UUID.
+3. In the SQL Editor, run `backend/supabase/seed.sql` with the UUID pasted in (it inserts a row in `researcher_profiles`). This row is what Row Level Security checks before letting the account read any study data.
+4. Open `admin.html`, sign in with that email/password.
+
+The console is read-only over the `research_*` views; it cannot write or delete study data. The participant app stays anonymous and never uses these credentials.
