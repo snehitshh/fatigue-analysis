@@ -1,62 +1,39 @@
-// Engagement / validation monitor (Stage 1: no camera, no permissions).
+// Engagement / validation monitor.
 //
-// Rides along with the existing tests and answers "was the participant actually
-// engaged with this test?" using two zero-permission signals:
-//   1. Page Visibility  -> did they switch away to another app/tab, and for how long
-//   2. Scroll behaviour  -> distance, depth, reversals, speed
+// Per-test validation signals (only derived numbers are produced - never any media):
+//   1. Page Visibility -> app-switches: count, total + longest time away
+//   2. Camera attention (optional, Stage 2) -> attentive %, look-away count
 //
-// Data is aggregated PER TEST (one summary, tagged with block + step) and only
-// derived numbers are produced - never any media. A future Stage 2 can fill the
-// camera-attention fields (attentivePercent, lookAwayCount) without changing this
-// shape. Persistence goes through the existing backend bridge (window.fatigueBackend),
-// so it is a no-op when Supabase is not configured.
+// Data is aggregated PER TEST (one summary, tagged with block + step) and persisted
+// through the existing backend bridge (window.fatigueBackend), so it is a no-op when
+// Supabase is not configured. The camera tracker (attentionTracker.js) pushes samples
+// here via recordAttentionSample(); if the participant declines the camera, the
+// app-switch signal still works on its own.
 (function () {
     const state = {
         inited: false,
         active: false,
         context: { blockNumber: null, step: null },
         startTime: 0,
-        // scroll
-        lastScrollY: 0,
-        scrollDistance: 0,
-        scrollMaxDepth: 0,
-        scrollEvents: 0,
-        scrollReversals: 0,
-        lastScrollDir: 0,
         // visibility
         hiddenAt: 0,
         appSwitchCount: 0,
         totalAwayMs: 0,
-        longestAwayMs: 0
+        longestAwayMs: 0,
+        // camera attention
+        attentionSamples: 0,
+        attentiveSamples: 0,
+        lookAwayCount: 0,
+        lastAttentive: null,
+        cameraUsed: false
     };
 
     function now() {
         return (window.performance && window.performance.now) ? window.performance.now() : Date.now();
     }
 
-    function scrollY() {
-        if (typeof window.scrollY === 'number') return window.scrollY;
-        return document.scrollingElement ? document.scrollingElement.scrollTop : 0;
-    }
-
-    function onScroll() {
-        if (!state.active) return;
-        const y = scrollY();
-        const dy = y - state.lastScrollY;
-        if (dy !== 0) {
-            state.scrollDistance += Math.abs(dy);
-            const dir = dy > 0 ? 1 : -1;
-            if (state.lastScrollDir !== 0 && dir !== state.lastScrollDir) state.scrollReversals++;
-            state.lastScrollDir = dir;
-        }
-        if (y > state.scrollMaxDepth) state.scrollMaxDepth = y;
-        state.scrollEvents++;
-        state.lastScrollY = y;
-    }
-
     function onVisibility() {
         if (document.hidden) {
-            // They just left (switched app / locked screen / changed tab).
             state.hiddenAt = Date.now();
         } else if (state.hiddenAt) {
             const awayMs = Date.now() - state.hiddenAt;
@@ -68,7 +45,6 @@
                 if (awayMs > state.longestAwayMs) state.longestAwayMs = awayMs;
             }
 
-            // Always log the granular event (also useful outside an active test).
             const backend = window.fatigueBackend;
             if (backend && typeof backend.recordEngagementEvent === 'function') {
                 backend.recordEngagementEvent('app_switch', {
@@ -83,11 +59,9 @@
     function init() {
         if (state.inited) return;
         state.inited = true;
-        window.addEventListener('scroll', onScroll, { passive: true });
         document.addEventListener('visibilitychange', onVisibility);
     }
 
-    // Begin monitoring a test. context = { blockNumber, step }.
     function startTest(context) {
         init();
         state.active = true;
@@ -96,24 +70,34 @@
             step: (context && context.step) || null
         };
         state.startTime = now();
-        state.lastScrollY = scrollY();
-        state.scrollDistance = 0;
-        state.scrollMaxDepth = state.lastScrollY;
-        state.scrollEvents = 0;
-        state.scrollReversals = 0;
-        state.lastScrollDir = 0;
+        state.hiddenAt = document.hidden ? Date.now() : 0;
         state.appSwitchCount = 0;
         state.totalAwayMs = 0;
         state.longestAwayMs = 0;
-        state.hiddenAt = document.hidden ? Date.now() : 0;
+        state.attentionSamples = 0;
+        state.attentiveSamples = 0;
+        state.lookAwayCount = 0;
+        state.lastAttentive = null;
+        state.cameraUsed = false;
     }
 
-    // Finish the current test, build a summary, and persist it. Returns the summary.
+    // Called by attentionTracker.js, a few times per second, with a boolean:
+    // true  = participant appears to be looking at the screen
+    // false = no face / looking away
+    function recordAttentionSample(attentive) {
+        if (!state.active) return;
+        state.cameraUsed = true;
+        state.attentionSamples++;
+        if (attentive) state.attentiveSamples++;
+        // A look-away = a transition from attentive to not-attentive.
+        if (state.lastAttentive === true && attentive === false) state.lookAwayCount++;
+        state.lastAttentive = attentive;
+    }
+
     function endTest() {
         if (!state.active) return null;
         state.active = false;
 
-        // Account for time spent away if the test ended while still hidden.
         if (state.hiddenAt) {
             const awayMs = Date.now() - state.hiddenAt;
             state.hiddenAt = 0;
@@ -123,24 +107,20 @@
         }
 
         const durationMs = Math.round(now() - state.startTime);
-        const meanSpeed = durationMs > 0 ? (state.scrollDistance / (durationMs / 1000)) : 0;
+        const attentivePercent = state.attentionSamples > 0
+            ? Number(((state.attentiveSamples / state.attentionSamples) * 100).toFixed(2))
+            : null;
 
         const summary = {
             blockNumber: state.context.blockNumber,
             step: state.context.step,
             durationMs,
-            scrollDistancePx: Math.round(state.scrollDistance),
-            scrollMaxDepthPx: Math.round(state.scrollMaxDepth),
-            scrollEvents: state.scrollEvents,
-            scrollReversals: state.scrollReversals,
-            scrollMeanSpeedPxS: Number(meanSpeed.toFixed(2)),
             appSwitchCount: state.appSwitchCount,
             totalAwayMs: state.totalAwayMs,
             longestAwayMs: state.longestAwayMs,
-            // Stage 2 (camera attention) placeholders - filled in later.
-            attentivePercent: null,
-            lookAwayCount: null,
-            cameraUsed: false
+            attentivePercent,
+            lookAwayCount: state.cameraUsed ? state.lookAwayCount : null,
+            cameraUsed: state.cameraUsed
         };
 
         const backend = window.fatigueBackend;
@@ -158,6 +138,6 @@
         };
     }
 
-    window.fatigueEngagement = { init, startTest, endTest, setContext };
+    window.fatigueEngagement = { init, startTest, endTest, recordAttentionSample, setContext };
     init();
 })();

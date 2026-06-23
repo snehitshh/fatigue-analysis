@@ -120,7 +120,7 @@ Use `backend/supabase/EXPORTS.md` for simple query examples. These views are for
 
 ## 8. Engagement / Validation Summary
 
-The app records a per-test engagement summary (scroll behaviour + app-switch / time-away signals) so researchers can judge whether a participant was actually engaged during each test. Camera-attention columns are reserved for a future stage.
+The app records a per-test engagement summary so researchers can judge whether a participant was actually engaged during each test. It captures app-switch / time-away signals (Page Visibility) and, when the participant opts in, camera attention (looking at the screen vs away).
 
 Fresh setups get the `engagement_summary` table and its export view from `backend/supabase/schema.sql` automatically.
 

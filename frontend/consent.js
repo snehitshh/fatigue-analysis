@@ -5,6 +5,59 @@
 // network themselves; main.js decides how to persist the returned data
 // (participant metadata + session events), so this file has no backend coupling.
 
+// --- Camera attention opt-in --------------------------------------------------
+// Optional. onDone(result) is always called so the study proceeds either way:
+//   result = { enabled: true }            camera granted and tracking started
+//   result = { enabled: false, reason }   declined or unavailable (denied/error)
+// Processing is on-device; only a looking/not-looking signal is derived, never media.
+function mountCameraConsent(container, onDone) {
+    container.innerHTML = `
+        <div class="consent-container card-screen screen-enter">
+            <div class="block-title">Attention Check (Optional)</div>
+            <div class="consent-body">
+                <p>To help us confirm the quality of your data, you can optionally let us use your
+                <strong>front camera</strong> during the tasks to check whether you are looking at the screen.</p>
+                <h3>What this does</h3>
+                <ul>
+                    <li>Runs entirely <strong>on your device</strong>. No photo or video is recorded, stored, or uploaded.</li>
+                    <li>We keep only a simple <strong>looking / not-looking</strong> signal, summarised per task.</li>
+                    <li>It is <strong>optional</strong> - you can take part fully without it.</li>
+                    <li>You can revoke camera access at any time in your browser.</li>
+                </ul>
+                <p class="field-hint" id="camera-consent-status"></p>
+            </div>
+            <div class="consent-actions">
+                <button class="button secondary" id="camera-skip-btn" type="button">Continue Without Camera</button>
+                <button class="button primary" id="camera-enable-btn" type="button">Enable Camera</button>
+            </div>
+        </div>
+    `;
+
+    const enableBtn = document.getElementById('camera-enable-btn');
+    const skipBtn = document.getElementById('camera-skip-btn');
+    const status = document.getElementById('camera-consent-status');
+
+    skipBtn.addEventListener('click', () => onDone({ enabled: false, reason: 'declined' }));
+
+    enableBtn.addEventListener('click', async () => {
+        const api = (typeof window !== 'undefined') ? window.fatigueAttention : null;
+        if (!api || typeof api.enableAttention !== 'function') {
+            onDone({ enabled: false, reason: 'unavailable' });
+            return;
+        }
+        enableBtn.disabled = true;
+        status.textContent = 'Requesting camera...';
+        try {
+            await api.enableAttention(); // getUserMedia runs from this click gesture
+            onDone({ enabled: true });
+        } catch (err) {
+            status.textContent = 'Camera unavailable or blocked. You can continue without it.';
+            enableBtn.disabled = false;
+            // Let them retry or skip; surface the failure but don't block the study.
+        }
+    });
+}
+
 // --- Informed consent ---------------------------------------------------------
 // onComplete(consentRecord) is called only when the participant explicitly agrees.
 // onDecline() is called when they choose not to take part.

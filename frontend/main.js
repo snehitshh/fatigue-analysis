@@ -522,11 +522,6 @@ async function saveBackendEngagementSummary(data) {
         block_number: blockNumber,
         step: data.step || null,
         duration_ms: toNullableInt(data.durationMs),
-        scroll_distance_px: toNullableInt(data.scrollDistancePx),
-        scroll_max_depth_px: toNullableInt(data.scrollMaxDepthPx),
-        scroll_events: toNullableInt(data.scrollEvents),
-        scroll_reversals: toNullableInt(data.scrollReversals),
-        scroll_mean_speed_px_s: toNullableNumber(data.scrollMeanSpeedPxS),
         app_switch_count: toNullableInt(data.appSwitchCount) || 0,
         total_away_ms: toNullableInt(data.totalAwayMs) || 0,
         longest_away_ms: toNullableInt(data.longestAwayMs) || 0,
@@ -636,6 +631,7 @@ function hydrateFromSnapshot(snap) {
 function stepDisplayName(step) {
     return {
         'consent': 'Informed Consent',
+        'camera-consent': 'Camera Check',
         'demographics': 'Participant Info',
         'experiment-setup': 'Experiment Setup',
         'fitts': 'Fitts Tapping Test',
@@ -657,6 +653,7 @@ function escapeHtml(value) {
 
 function routeToStep(step) {
     switch (step) {
+        case 'camera-consent': showCameraConsent(); break;
         case 'demographics': showDemographics(); break;
         case 'experiment-setup': showExperimentSetup(); break;
         case 'fitts': showFittsTest(); break;
@@ -767,6 +764,7 @@ function withdrawStudy() {
         danger: true,
         onConfirm: () => {
             withdrawn = true;
+            window.fatigueAttention?.disableAttention?.(); // release the camera
             recordBackendEvent('participant_withdrew', { atStep: currentStep, block: currentBlock });
             clearSession();
 
@@ -794,7 +792,7 @@ window.addEventListener('beforeunload', function (e) {
 });
 // Four high-level phases shown as a numbered stepper (matches the console design).
 function currentPhaseIndex() {
-    if (currentStep === 'consent') return 0;
+    if (currentStep === 'consent' || currentStep === 'camera-consent') return 0;
     if (currentStep === 'demographics' || currentStep === 'experiment-setup') return 1;
     if (currentStep === 'complete') return 3;
     return 2; // every in-block step is "Data Collection"
@@ -869,9 +867,27 @@ function showConsent() {
     mountConsentScreen(mainContent, (record) => {
         consentData = record;
         setWithdrawVisible(true); // participant can now leave at any time
-        showDemographics();
+        showCameraConsent();
     }, () => {
         showConsentDeclined();
+    });
+}
+
+// 0b. Optional camera attention opt-in (after consent, before demographics).
+function showCameraConsent() {
+    currentStep = 'camera-consent';
+    updateProgress();
+
+    if (typeof mountCameraConsent !== 'function') {
+        showDemographics();
+        return;
+    }
+
+    mountCameraConsent(mainContent, (result) => {
+        const record = { ...result, decidedAt: new Date().toISOString() };
+        if (consentData) consentData.camera = record; // captured in participant metadata
+        recordBackendEvent('camera_consent', record);
+        showDemographics();
     });
 }
 
@@ -1422,6 +1438,7 @@ function showCompletion() {
     clearSession(); // study finished - nothing left to resume
     updateProgress();
     setWithdrawVisible(false);
+    window.fatigueAttention?.disableAttention?.(); // release the camera
     recordBackendEvent('session_completed', { totalBlocks: TOTAL_BLOCKS });
 
     const databaseMode = isDatabaseMode();
