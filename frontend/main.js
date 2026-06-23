@@ -507,13 +507,50 @@ async function saveBackendCognitiveTrial(data) {
     }
 }
 
+async function saveBackendEngagementSummary(data) {
+    const api = getBackendApi();
+    if (!api || !api.isSupabaseConfigured) return;
+
+    const blockNumber = data.blockNumber || currentBlock;
+    const sessionId = await ensureBackendSession();
+    const blockId = await ensureBackendBlock(blockNumber);
+    if (!sessionId || !blockId) return;
+
+    const result = await api.saveEngagementSummary({
+        session_id: sessionId,
+        block_id: blockId,
+        block_number: blockNumber,
+        step: data.step || null,
+        duration_ms: toNullableInt(data.durationMs),
+        scroll_distance_px: toNullableInt(data.scrollDistancePx),
+        scroll_max_depth_px: toNullableInt(data.scrollMaxDepthPx),
+        scroll_events: toNullableInt(data.scrollEvents),
+        scroll_reversals: toNullableInt(data.scrollReversals),
+        scroll_mean_speed_px_s: toNullableNumber(data.scrollMeanSpeedPxS),
+        app_switch_count: toNullableInt(data.appSwitchCount) || 0,
+        total_away_ms: toNullableInt(data.totalAwayMs) || 0,
+        longest_away_ms: toNullableInt(data.longestAwayMs) || 0,
+        attentive_percent: toNullableNumber(data.attentivePercent),
+        look_away_count: toNullableInt(data.lookAwayCount),
+        camera_used: Boolean(data.cameraUsed),
+        input_method: sessionData.demographics.inputDevice || null,
+        ...getRecordIdentity('engagement', blockNumber)
+    });
+
+    if (result.error) {
+        logBackendError('saveEngagementSummary', result.error);
+    }
+}
+
 window.fatigueBackend = {
     isDatabaseMode,
     shouldDownloadCsvBackup,
     getRecordIdentity,
     saveFittsTrial: saveBackendFittsTrial,
     saveTypingTrial: saveBackendTypingTrial,
-    saveCognitiveTrial: saveBackendCognitiveTrial
+    saveCognitiveTrial: saveBackendCognitiveTrial,
+    saveEngagementSummary: saveBackendEngagementSummary,
+    recordEngagementEvent: (eventType, payload) => recordBackendEvent(eventType, payload)
 };
 
 // ============================================================
@@ -1022,10 +1059,12 @@ function startBlock(blockNum) {
 function showFittsTest() {
     currentStep = 'fitts';
     updateProgress();
+    window.fatigueEngagement?.startTest({ blockNumber: currentBlock, step: 'fitts' });
     const pid = sessionData.demographics.participantId || "UNKNOWN";
     const block = sessionData.blocks[currentBlock - 1] || {};
     const startMinute = (block.primaryProgress && block.primaryProgress.completedMinutes) || 0;
     mountFittsTest(mainContent, (data) => {
+        window.fatigueEngagement?.endTest();
         sessionData.blocks[currentBlock - 1].primaryData = data;
         showNASATLX();
     }, pid, currentBlock, {
@@ -1043,10 +1082,12 @@ function showFittsTest() {
 function showTypingTest() {
     currentStep = 'typing';
     updateProgress();
+    window.fatigueEngagement?.startTest({ blockNumber: currentBlock, step: 'typing' });
     const pid = sessionData.demographics.participantId || "UNKNOWN";
     const block = sessionData.blocks[currentBlock - 1] || {};
     const startMinute = (block.primaryProgress && block.primaryProgress.completedMinutes) || 0;
     mountTypingTest(mainContent, (data) => {
+        window.fatigueEngagement?.endTest();
         sessionData.blocks[currentBlock - 1].primaryData = data;
         showNASATLX();
     }, pid, currentBlock, {
@@ -1067,8 +1108,11 @@ function showNASATLX() {
     // Grab the ID before passing it to the test
     const pid = sessionData.demographics.participantId || "UNKNOWN";
     
+    window.fatigueEngagement?.startTest({ blockNumber: currentBlock, step: 'nasatlx' });
+
     // Pass currentBlock and pid as the 3rd and 4th arguments
     mountNASATLX(mainContent, (data) => {
+        window.fatigueEngagement?.endTest();
         sessionData.blocks[currentBlock - 1].nasatlxData = data;
         saveBackendNasaTlxResponse(data, currentBlock);
         showBreak();
@@ -1190,8 +1234,11 @@ function showCognitiveTest() {
     // Grab the ID before passing it to the test
     const pid = sessionData.demographics.participantId || "UNKNOWN";
     
+    window.fatigueEngagement?.startTest({ blockNumber: currentBlock, step: 'cognitive' });
+
     // Pass currentBlock and pid as the 3rd and 4th arguments
     mountCognitiveTest(mainContent, (data) => {
+        window.fatigueEngagement?.endTest();
         sessionData.blocks[currentBlock - 1].fatigueData = data;
         finishBlock();
     }, currentBlock, pid);
@@ -1201,7 +1248,8 @@ function showCognitiveTest() {
 function showPhysicalFatigueTest() {
     currentStep = 'physical';
     updateProgress();
-    
+    window.fatigueEngagement?.startTest({ blockNumber: currentBlock, step: 'physical' });
+
     let timeRemaining = PHYSICAL_FATIGUE_DURATION;
     let timerInterval = null;
     let timerRunning = false;
@@ -1291,6 +1339,7 @@ function showPhysicalFatigueTest() {
     window.finishPhysicalTest = function() {
         if (physicalFinished) return;
         physicalFinished = true;
+        window.fatigueEngagement?.endTest();
         if (timerInterval) clearInterval(timerInterval);
 
         const now = performance.now();

@@ -785,4 +785,93 @@ comment on view public.research_nasa_tlx_export is 'Flat NASA-TLX export with ca
 comment on view public.research_physical_export is 'Flat physical fatigue export with candidate/session labels.';
 comment on view public.research_event_export is 'Flat session event export with candidate/session labels.';
 
+-- Engagement / validation summary (scroll + app-switch per test; camera fields reserved).
+create table if not exists public.engagement_summary (
+    id uuid primary key default gen_random_uuid(),
+    session_id uuid not null references public.sessions(id) on delete cascade,
+    block_id uuid references public.experiment_blocks(id) on delete set null,
+    block_number integer check (block_number between 1 and 3),
+    step text,
+    duration_ms integer check (duration_ms is null or duration_ms >= 0),
+    scroll_distance_px integer check (scroll_distance_px is null or scroll_distance_px >= 0),
+    scroll_max_depth_px integer check (scroll_max_depth_px is null or scroll_max_depth_px >= 0),
+    scroll_events integer check (scroll_events is null or scroll_events >= 0),
+    scroll_reversals integer check (scroll_reversals is null or scroll_reversals >= 0),
+    scroll_mean_speed_px_s numeric(10, 2),
+    app_switch_count integer not null default 0 check (app_switch_count >= 0),
+    total_away_ms integer not null default 0 check (total_away_ms >= 0),
+    longest_away_ms integer not null default 0 check (longest_away_ms >= 0),
+    attentive_percent numeric(6, 2),
+    look_away_count integer check (look_away_count is null or look_away_count >= 0),
+    camera_used boolean not null default false,
+    input_method text,
+    participant_code text,
+    session_code text,
+    record_label text,
+    created_at timestamptz not null default now()
+);
+
+create index if not exists idx_engagement_session_block on public.engagement_summary(session_id, block_number);
+create index if not exists idx_engagement_record_label on public.engagement_summary(record_label);
+
+alter table public.engagement_summary enable row level security;
+grant insert on public.engagement_summary to anon;
+grant select on public.engagement_summary to authenticated;
+
+drop policy if exists "anon can insert engagement summary" on public.engagement_summary;
+create policy "anon can insert engagement summary"
+on public.engagement_summary
+for insert
+to anon
+with check (true);
+
+drop policy if exists "researchers can read engagement summary" on public.engagement_summary;
+create policy "researchers can read engagement summary"
+on public.engagement_summary
+for select
+to authenticated
+using (
+    exists (
+        select 1 from public.researcher_profiles rp
+        where rp.user_id = (select auth.uid())
+          and rp.role in ('admin', 'researcher', 'viewer')
+    )
+);
+
+create or replace view public.research_engagement_export
+with (security_invoker = true) as
+select
+    es.record_label,
+    coalesce(es.participant_code, p.participant_code) as participant_code,
+    coalesce(es.session_code, s.session_code) as session_code,
+    es.session_id,
+    es.block_id,
+    es.block_number,
+    es.step,
+    es.duration_ms,
+    es.scroll_distance_px,
+    es.scroll_max_depth_px,
+    es.scroll_events,
+    es.scroll_reversals,
+    es.scroll_mean_speed_px_s,
+    es.app_switch_count,
+    es.total_away_ms,
+    es.longest_away_ms,
+    es.attentive_percent,
+    es.look_away_count,
+    es.camera_used,
+    es.input_method,
+    s.final_base_task::text as final_base_task,
+    s.final_fatigue_track::text as final_fatigue_track,
+    es.created_at
+from public.engagement_summary es
+join public.sessions s on s.id = es.session_id
+join public.participants p on p.id = s.participant_id;
+
+revoke all on public.research_engagement_export from public;
+revoke all on public.research_engagement_export from anon;
+grant select on public.research_engagement_export to authenticated;
+
+comment on view public.research_engagement_export is 'Flat per-test engagement/validation export (scroll + app-switch; camera fields reserved).';
+
 commit;

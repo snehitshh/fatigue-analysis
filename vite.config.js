@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 import { defineConfig } from "vite";
 
 const legacyAssets = [
+    "engagementMonitor.js",
     "consent.js",
     "demographics.js",
     "typing.js",

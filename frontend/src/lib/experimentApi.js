@@ -60,7 +60,8 @@ export const experimentApi = {
     saveTypingTrial: (payload) => insertRow("typing_trials", payload),
     saveNasaTlxResponse: (payload) => insertRow("nasa_tlx_responses", payload),
     saveCognitiveTrial: (payload) => insertRow("cognitive_trials", payload),
-    savePhysicalFatigueLog: (payload) => insertRow("physical_fatigue_logs", payload)
+    savePhysicalFatigueLog: (payload) => insertRow("physical_fatigue_logs", payload),
+    saveEngagementSummary: (payload) => insertRow("engagement_summary", payload)
 };
 
 window.fatigueExperimentApi = experimentApi;
