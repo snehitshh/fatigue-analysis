@@ -62,9 +62,9 @@ user_guide = [
     ("p", "Without a .env the app still runs, but it saves data as local CSV files instead of the database."),
 
     ("h1", "3. Running the apps"),
-    ("p", "Start the app (npm run dev) and open these pages:"),
-    ("b", "/  — the participant experiment."),
-    ("b", "/admin.html  — the research console (sign in here)."),
+    ("p", "Start the app (npm run dev). There is one link to share — the home page asks whether the "
+          "person is a Participant or a Researcher:"),
+    ("b", "/  — Home: choose 'I'm a Participant' (start the study) or 'Researcher / Admin' (the console)."),
     ("b", "/scroll.html  — the scroll-fatigue study."),
 
     ("h1", "4. Before a data-collection day"),
@@ -74,7 +74,7 @@ user_guide = [
     ("n", "Print or write down the IDs to hand to participants."),
 
     ("h1", "5. Running a participant session"),
-    ("n", "Give the participant an ID and open the experiment page on their device."),
+    ("n", "Open the link on their device and tap 'I'm a Participant'. Give them their ID."),
     ("n", "They read and agree to the consent screen."),
     ("n", "They can optionally enable the camera (attention check). If they do, a quick 4-dot "
           "calibration appears — they tap each glowing dot."),

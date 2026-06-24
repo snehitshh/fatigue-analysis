@@ -705,7 +705,30 @@ function resumeSession(snap) {
 document.addEventListener('DOMContentLoaded', function() {
     const withdrawBtn = document.getElementById('withdraw-btn');
     if (withdrawBtn) withdrawBtn.addEventListener('click', withdrawStudy);
+    showLanding();
+});
 
+// One shared entry: ask whether this is a participant or a researcher, so there's
+// a single URL to hand out. Researchers go to the console; participants start the
+// study (resuming an in-progress session if there is one).
+function showLanding() {
+    setWithdrawVisible(false);
+    mainContent.innerHTML = `
+        <div class="card-screen screen-enter" style="max-width:560px; margin:0 auto; text-align:center;">
+            <div class="kicker" style="color:var(--accent-cyan, #45c8e6); font-weight:800; letter-spacing:0.16em; text-transform:uppercase; font-size:0.72rem;">Welcome</div>
+            <div class="block-title" style="text-align:center;">How are you using this?</div>
+            <p style="color: var(--color-text-muted, #6b7280);">Choose to begin.</p>
+            <div style="display:flex; gap:16px; flex-wrap:wrap; margin-top:18px;">
+                <button class="button primary" id="role-participant" type="button" style="flex:1; min-width:200px;">I'm a Participant</button>
+                <button class="button secondary" id="role-admin" type="button" style="flex:1; min-width:200px;">Researcher / Admin</button>
+            </div>
+            <p style="margin-top:18px;"><a href="scroll.html" style="color:var(--accent-cyan, #45c8e6); font-size:0.9em; text-decoration:none;">Scroll study &rarr;</a></p>
+        </div>`;
+    document.getElementById('role-participant').onclick = startParticipant;
+    document.getElementById('role-admin').onclick = () => { window.location.href = 'admin.html'; };
+}
+
+function startParticipant() {
     const saved = loadSession();
     const resumable = saved && saved.consentData
         && saved.currentStep && saved.currentStep !== 'consent' && saved.currentStep !== 'complete';
@@ -717,7 +740,7 @@ document.addEventListener('DOMContentLoaded', function() {
         sessionData.startTime = new Date().toISOString();
         showConsent();
     }
-});
+}
 
 function setWithdrawVisible(visible) {
     const btn = document.getElementById('withdraw-btn');

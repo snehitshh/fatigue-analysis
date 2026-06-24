@@ -156,8 +156,8 @@ npm run dev
 
 | URL | What it is |
 |-----|------------|
-| `http://127.0.0.1:5173/` | The participant experiment |
-| `http://127.0.0.1:5173/admin.html` | The research console |
+| `http://127.0.0.1:5173/` | **Home — one link to share.** Choose *Participant* (start the study) or *Researcher / Admin* (the console). |
+| `http://127.0.0.1:5173/admin.html` | The research console (also reachable from Home) |
 | `http://127.0.0.1:5173/scroll.html` | The scroll-fatigue study |
 
 Other commands:
