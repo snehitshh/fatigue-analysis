@@ -7,6 +7,7 @@
 
 begin;
 
+drop view if exists public.research_session_quality;
 create or replace view public.research_session_quality
 with (security_invoker = true) as
 select

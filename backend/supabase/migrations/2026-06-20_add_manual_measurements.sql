@@ -60,6 +60,7 @@ using (
     )
 );
 
+drop view if exists public.research_manual_measurements_export;
 create or replace view public.research_manual_measurements_export
 with (security_invoker = true) as
 select

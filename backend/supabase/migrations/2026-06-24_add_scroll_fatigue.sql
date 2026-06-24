@@ -77,6 +77,7 @@ for select to authenticated using (
     exists (select 1 from public.researcher_profiles rp
         where rp.user_id = (select auth.uid()) and rp.role in ('admin','researcher','viewer')));
 
+drop view if exists public.research_scroll_sessions_export;
 create or replace view public.research_scroll_sessions_export
 with (security_invoker = true) as
 select
@@ -87,6 +88,7 @@ select
     ss.device_info, ss.started_at, ss.completed_at, ss.created_at
 from public.scroll_sessions ss;
 
+drop view if exists public.research_scroll_intervals_export;
 create or replace view public.research_scroll_intervals_export
 with (security_invoker = true) as
 select

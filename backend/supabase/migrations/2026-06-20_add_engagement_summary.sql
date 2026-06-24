@@ -57,6 +57,7 @@ using (
     )
 );
 
+drop view if exists public.research_engagement_export;
 create or replace view public.research_engagement_export
 with (security_invoker = true) as
 select
