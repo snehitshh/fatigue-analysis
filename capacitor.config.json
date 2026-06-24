@@ -1,0 +1,8 @@
+{
+  "appId": "com.fatigueidpro.scroll",
+  "appName": "FatigueIDPro Scroll",
+  "webDir": "dist-app",
+  "android": {
+    "allowMixedContent": false
+  }
+}
