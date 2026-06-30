@@ -132,6 +132,13 @@ function wireFilter(filterId, countId, total) {
 }
 
 // --- routing / auth -----------------------------------------------------------
+const ALLOWED_ROLES = ["admin", "researcher", "viewer"];
+
+// Fire-and-forget append to the audit trail (who exported / approved / denied).
+function logAction(action, target, detail) {
+    try { supabase.rpc("log_audit", { p_action: action, p_target: target || null, p_detail: detail || {} }); } catch { /* best-effort */ }
+}
+
 async function route() {
     if (!isConfigured) {
         setLoggedInUI(null);
@@ -144,8 +151,13 @@ async function route() {
 
     const email = data.session.user.email;
     setLoggedInUI(email);
-    const role = await getRole();
-    if (!role) { renderPending(email); return; }
+    let role = await getRole();
+    if (!role) {
+        // First sign-in with no profile: record a pending access request.
+        try { const { data: r } = await supabase.rpc("request_researcher_access"); role = r || "pending"; }
+        catch { role = "pending"; }
+    }
+    if (!ALLOWED_ROLES.includes(role)) { renderPending(email, role); return; }
     renderShell(role);
 }
 
@@ -191,7 +203,7 @@ function renderAuth(mode, message) {
         if (isSignup) {
             const { error } = await supabase.auth.signUp({ email, password });
             if (error) { renderAuth("signup", { type: "error", text: error.message }); return; }
-            renderAuth("login", { type: "notice", text: "Account created. If email confirmation is enabled, confirm via email, then sign in. An admin must grant access." });
+            renderAuth("login", { type: "notice", text: "Account created. If email confirmation is enabled, confirm via email, then sign in. Your access then needs an administrator to approve it before any data is visible." });
             return;
         }
         const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -200,16 +212,19 @@ function renderAuth(mode, message) {
     });
 }
 
-function renderPending(email) {
+function renderPending(email, status) {
     setLoggedInUI(email);
+    const denied = status === "denied";
     root.innerHTML = `
-        <div class="card">
-            <div class="kicker">Account pending</div>
-            <h1>Awaiting approval</h1>
-            <p class="muted">You are signed in as <strong>${esc(email)}</strong>, but your account has not been
-            granted researcher access yet. An administrator must add a row for you in
-            <code>researcher_profiles</code> (see <code>SETUP.md</code> §9). Once added, click <strong>Refresh</strong>.</p>
+        <div class="login-wrap card">
+            <div class="kicker">${denied ? "Access denied" : "Account pending"}</div>
+            <h1>${denied ? "Access not granted" : "Awaiting approval"}</h1>
+            <p class="muted">You are signed in as <strong>${esc(email)}</strong>. ${denied
+                ? "An administrator has not granted this account access to study data. If you think this is a mistake, contact the study admin."
+                : "Your request has been recorded and is waiting for an administrator to approve it. Once approved, click <strong>Refresh</strong>."}</p>
+            <div style="margin-top:16px;"><button class="ghost" id="pending-signout" type="button">Sign out</button></div>
         </div>`;
+    document.getElementById("pending-signout").addEventListener("click", signOut);
 }
 
 async function signOut() {
@@ -229,11 +244,16 @@ const NAV = [
         { route: "measurements", label: "Measurements" },
         { route: "slots", label: "Participant IDs", count: "slots" },
         { route: "export", label: "Export" }
+    ] },
+    { group: "Administration", admin: true, items: [
+        { route: "access", label: "Access requests" },
+        { route: "audit", label: "Audit log" }
     ] }
 ];
 
-function renderShell() {
-    const navHtml = NAV.map((g) => {
+function renderShell(role) {
+    const isAdmin = role === "admin";
+    const navHtml = NAV.filter((g) => !g.admin || isAdmin).map((g) => {
         const label = g.group ? `<div class="nav-label">${esc(g.group)}</div>` : "";
         const links = g.items.map((it) =>
             `<a href="#${it.route}" data-route="${it.route}">${esc(it.label)}${it.count ? `<span class="count" data-count="${it.count}"></span>` : ""}</a>`
@@ -275,6 +295,8 @@ function navigate() {
         case "measurements": return loadMeasurements();
         case "slots": return loadSlots();
         case "export": return loadExport();
+        case "access": return loadAccessRequests();
+        case "audit": return loadAuditLog();
         case "overview":
         default: return loadOverview();
     }
@@ -474,7 +496,7 @@ async function loadTestView(key) {
 
     wireFilter("tv-filter", "tv-count", rows.length);
     document.getElementById("tv-export").addEventListener("click", () => {
-        if (rows.length) downloadCsv(`${cfg.file}.csv`, toCsv(rows));
+        if (rows.length) { downloadCsv(`${cfg.file}.csv`, toCsv(rows)); logAction("export_csv", cfg.file, { rows: rows.length }); }
     });
 }
 
@@ -556,7 +578,7 @@ async function loadMeasurements() {
     if (!error) {
         wireFilter("meas-filter", "meas-count", (meas || []).length);
         const ex = document.getElementById("meas-export");
-        if (ex) ex.addEventListener("click", () => { if ((meas || []).length) downloadCsv("manual_measurements.csv", toCsv(meas)); });
+        if (ex) ex.addEventListener("click", () => { if ((meas || []).length) { downloadCsv("manual_measurements.csv", toCsv(meas)); logAction("export_csv", "manual_measurements", { rows: meas.length }); } });
     }
 }
 
@@ -634,6 +656,7 @@ async function exportOne(viewName, name) {
     if (error) return { name, ok: false, error: error.message };
     const rows = data || [];
     if (rows.length) downloadCsv(`${name}.csv`, toCsv(rows));
+    logAction("export_csv", name, { rows: rows.length });
     return { name, ok: true, count: rows.length };
 }
 
@@ -779,6 +802,100 @@ async function onGenerate(e) {
 async function updateSlot(id, patch) {
     const { error } = await supabase.from("participant_slots").update(patch).eq("id", id);
     if (!error) { loadSlots(); refreshNavCounts(); }
+}
+
+// --- access requests (admin) --------------------------------------------------
+async function loadAccessRequests() {
+    view().innerHTML = spinner("Loading access requests…");
+    const { data, error } = await supabase.rpc("admin_list_researchers");
+    if (error) { view().innerHTML = errorCard("Could not load access requests", error.message); return; }
+    const rows = data || [];
+    const roleOptions = (cur) => ["viewer", "researcher", "admin"]
+        .map((r) => `<option value="${r}"${r === cur ? " selected" : ""}>${r}</option>`).join("");
+    const badge = (r) => r.role === "pending"
+        ? `<span class="pill" style="background:rgba(180,83,9,0.12);color:#b45309;">pending</span>`
+        : r.role === "denied"
+            ? `<span class="pill" style="background:rgba(220,38,38,0.12);color:#dc2626;">denied</span>`
+            : `<span class="pill">${esc(r.role)}</span>`;
+    const body = rows.map((r) => {
+        const defaultRole = ["viewer", "researcher", "admin"].includes(r.role) ? r.role : "viewer";
+        return `<tr>
+            <td><strong>${esc(r.email)}</strong>${r.full_name ? `<br><span class="muted" style="font-size:0.85em;">${esc(r.full_name)}</span>` : ""}</td>
+            <td>${badge(r)}</td>
+            <td>${fmtDate(r.requested_at)}</td>
+            <td>${r.approved_at ? fmtDate(r.approved_at) : "—"}${r.approved_by_email ? `<br><span class="muted" style="font-size:0.8em;">by ${esc(r.approved_by_email)}</span>` : ""}</td>
+            <td style="white-space:nowrap;">
+                <select data-role-for="${esc(r.user_id)}" style="width:auto; display:inline-block; padding:6px 8px;">${roleOptions(defaultRole)}</select>
+                <button class="ghost" data-approve="${esc(r.user_id)}" type="button">Approve</button>
+                <button class="ghost" data-deny="${esc(r.user_id)}" type="button">Deny</button>
+            </td>
+        </tr>`;
+    }).join("");
+    const pendingCount = rows.filter((r) => r.role === "pending").length;
+
+    view().innerHTML = `
+        <div class="card">
+            <div class="kicker">Administration</div>
+            <h1>Access requests</h1>
+            <p class="muted">Approve a sign-up by granting a role, or deny it. Every decision is recorded in the audit log.
+                <strong>${pendingCount}</strong> pending.</p>
+            <div class="toolbar"><input type="search" id="acc-filter" placeholder="Filter by email…">
+                <span class="muted" id="acc-count">${rows.length} account(s)</span></div>
+            <div class="scroll-x"><table>
+                <thead><tr><th>Account</th><th>Role</th><th>Requested</th><th>Decided</th><th>Action</th></tr></thead>
+                <tbody>${body || `<tr><td colspan="5" class="muted">No accounts yet.</td></tr>`}</tbody>
+            </table></div>
+        </div>`;
+
+    wireFilter("acc-filter", "acc-count", rows.length);
+    view().querySelectorAll("[data-approve]").forEach((b) => b.addEventListener("click", async () => {
+        const uid = b.dataset.approve;
+        const sel = view().querySelector(`[data-role-for="${uid}"]`);
+        b.disabled = true;
+        const { error: e } = await supabase.rpc("approve_researcher", { p_user_id: uid, p_role: sel.value });
+        if (e) { b.disabled = false; alert(e.message); return; }
+        loadAccessRequests();
+    }));
+    view().querySelectorAll("[data-deny]").forEach((b) => b.addEventListener("click", async () => {
+        const uid = b.dataset.deny;
+        if (!window.confirm("Deny this account access to study data?")) return;
+        b.disabled = true;
+        const { error: e } = await supabase.rpc("set_researcher_denied", { p_user_id: uid });
+        if (e) { b.disabled = false; alert(e.message); return; }
+        loadAccessRequests();
+    }));
+}
+
+// --- audit log (admin) --------------------------------------------------------
+async function loadAuditLog() {
+    view().innerHTML = spinner("Loading audit log…");
+    const { data, error } = await supabase
+        .from("audit_log").select("*").order("created_at", { ascending: false }).limit(2000);
+    if (error) { view().innerHTML = errorCard("Could not load audit log", error.message); return; }
+    const rows = data || [];
+    const body = rows.map((r) => `<tr>
+        <td>${fmtDate(r.created_at)}</td>
+        <td><strong>${esc(r.actor_email || "—")}</strong></td>
+        <td><span class="pill">${esc(r.action)}</span></td>
+        <td>${esc(r.target || "—")}</td>
+        <td>${r.detail && Object.keys(r.detail).length ? esc(JSON.stringify(r.detail)) : "—"}</td>
+    </tr>`).join("");
+
+    view().innerHTML = `
+        <div class="card">
+            <div class="view-head"><div>
+                <div class="kicker">Administration</div>
+                <h1>Audit log</h1>
+                <p class="muted" style="margin:0;">Append-only record of approvals, denials, and data exports.</p>
+            </div></div>
+            <div class="toolbar"><input type="search" id="audit-filter" placeholder="Filter…">
+                <span class="muted" id="audit-count">${rows.length} entr${rows.length === 1 ? "y" : "ies"}</span></div>
+            <div class="scroll-x"><table>
+                <thead><tr><th>When</th><th>Who</th><th>Action</th><th>Target</th><th>Detail</th></tr></thead>
+                <tbody>${body || `<tr><td colspan="5" class="muted">No audit entries yet.</td></tr>`}</tbody>
+            </table></div>
+        </div>`;
+    wireFilter("audit-filter", "audit-count", rows.length);
 }
 
 // hash-driven navigation; only fires once the shell (#view) is mounted.
