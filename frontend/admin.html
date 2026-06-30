@@ -36,35 +36,35 @@
         /* --- live wallpaper: slowly drifting pastel aurora (GPU transforms only) --- */
         .bg-aurora { position: fixed; inset: 0; z-index: -2; overflow: hidden; pointer-events: none; }
         .bg-aurora span {
-            position: absolute; border-radius: 50%; filter: blur(72px);
-            opacity: 0.55; will-change: transform;
+            position: absolute; border-radius: 50%; filter: blur(60px);
+            opacity: 0.75; will-change: transform;
         }
         .bg-aurora .b1 {
-            width: 520px; height: 520px; top: -140px; left: -90px;
-            background: radial-gradient(circle at 30% 30%, #bcd3ff, transparent 70%);
-            animation: drift1 26s ease-in-out infinite alternate;
+            width: 580px; height: 580px; top: -150px; left: -110px;
+            background: radial-gradient(circle at 30% 30%, #97baff, transparent 68%);
+            animation: drift1 22s ease-in-out infinite alternate;
         }
         .bg-aurora .b2 {
-            width: 460px; height: 460px; top: 38%; right: -120px;
-            background: radial-gradient(circle at 50% 50%, #bff0e6, transparent 70%);
-            animation: drift2 32s ease-in-out infinite alternate;
+            width: 540px; height: 540px; top: 26%; right: -150px;
+            background: radial-gradient(circle at 50% 50%, #8fe6d2, transparent 68%);
+            animation: drift2 27s ease-in-out infinite alternate;
         }
         .bg-aurora .b3 {
-            width: 560px; height: 560px; bottom: -180px; left: 28%;
-            background: radial-gradient(circle at 50% 50%, #e6d9ff, transparent 70%);
-            animation: drift3 30s ease-in-out infinite alternate;
+            width: 660px; height: 660px; bottom: -240px; left: 22%;
+            background: radial-gradient(circle at 50% 50%, #cdb0ff, transparent 68%);
+            animation: drift3 25s ease-in-out infinite alternate;
         }
         .bg-aurora .b4 {
-            width: 360px; height: 360px; top: 6%; left: 48%;
-            background: radial-gradient(circle at 50% 50%, #ffe6d1, transparent 70%);
-            opacity: 0.4; animation: drift2 38s ease-in-out infinite alternate;
+            width: 460px; height: 460px; top: 2%; left: 44%;
+            background: radial-gradient(circle at 50% 50%, #ffcca3, transparent 68%);
+            opacity: 0.6; animation: drift2 31s ease-in-out infinite alternate;
         }
-        /* soft white veil keeps everything calm and legible over the blobs */
+        /* light veil keeps text legible while letting the colour show through */
         .bg-veil { position: fixed; inset: 0; z-index: -1; pointer-events: none;
-            background: linear-gradient(180deg, rgba(255,255,255,0.55), rgba(238,242,251,0.72)); }
-        @keyframes drift1 { from { transform: translate(0,0) scale(1); } to { transform: translate(70px,46px) scale(1.16); } }
-        @keyframes drift2 { from { transform: translate(0,0) scale(1); } to { transform: translate(-56px,-34px) scale(1.12); } }
-        @keyframes drift3 { from { transform: translate(0,0) scale(1); } to { transform: translate(48px,-58px) scale(1.2); } }
+            background: linear-gradient(180deg, rgba(255,255,255,0.28), rgba(238,242,251,0.46)); }
+        @keyframes drift1 { from { transform: translate(0,0) scale(1); } to { transform: translate(130px,90px) scale(1.24); } }
+        @keyframes drift2 { from { transform: translate(0,0) scale(1); } to { transform: translate(-110px,-70px) scale(1.2); } }
+        @keyframes drift3 { from { transform: translate(0,0) scale(1); } to { transform: translate(100px,-100px) scale(1.28); } }
         @media (prefers-reduced-motion: reduce) { .bg-aurora span { animation: none; } }
 
         .admin-header {
@@ -172,6 +172,30 @@
         .stat .l { color: var(--muted); font-size: 0.76rem; }
         .scroll-x { overflow-x: auto; }
         code { background: #eef2f9; border: 1px solid var(--border); border-radius: 6px; padding: 1px 6px; font-size: 0.86em; color: #334155; }
+
+        /* --- micro-interactions & entrance animations --- */
+        @keyframes cardIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        #view > .card, #detail > .card, .login-wrap { animation: cardIn 0.42s cubic-bezier(0.2,0.7,0.2,1) both; }
+        #view > .card:nth-child(2) { animation-delay: 0.06s; }
+        #view > .card:nth-child(3) { animation-delay: 0.12s; }
+        .kpi { transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease; }
+        .kpi:hover { transform: translateY(-3px); box-shadow: 0 14px 30px rgba(30,58,138,0.14); border-color: var(--border-strong); }
+        .stat { transition: transform 0.18s ease, box-shadow 0.18s ease; }
+        .stat:hover { transform: translateY(-2px); box-shadow: 0 12px 24px rgba(30,58,138,0.12); }
+        .sidebar a { transition: background-color 0.18s ease, color 0.18s ease, transform 0.18s ease; }
+        .sidebar a:hover { transform: translateX(3px); }
+        .quick-links .ql { transition: border-color 0.18s ease, color 0.18s ease, background-color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease; }
+        .quick-links .ql:hover { transform: translateY(-2px); box-shadow: 0 8px 18px rgba(30,58,138,0.12); }
+        button:active { transform: translateY(1px); }
+        .loading { display: flex; align-items: center; gap: 10px; color: var(--muted); }
+        .spinner { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(37,99,235,0.25); border-top-color: var(--accent); animation: spin 0.7s linear infinite; display: inline-block; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @media (prefers-reduced-motion: reduce) {
+            #view > .card, #detail > .card, .login-wrap { animation: none; }
+            .kpi:hover, .stat:hover, .sidebar a:hover, .quick-links .ql:hover { transform: none; }
+            .spinner { animation-duration: 1.5s; }
+        }
+
         @media (max-width: 600px) { main { padding: 16px 12px 40px; } .admin-header { padding: 12px 16px; } }
     </style>
 </head>

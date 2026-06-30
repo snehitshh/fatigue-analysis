@@ -79,6 +79,21 @@ const countBy = (arr, k) => (arr || []).reduce((a, x) => { a[x[k]] = (a[x[k]] ||
 const errorCard = (title, msg) => `<div class="card"><h1>${esc(title)}</h1><p class="error">${esc(msg)}</p></div>`;
 const view = () => document.getElementById("view");
 
+const prefersReducedMotion = Boolean(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+const spinner = (text = "Loading…") => `<div class="card"><div class="loading"><span class="spinner"></span>${esc(text)}</div></div>`;
+// Count-up tween for KPI numbers (eased, ~0.65s); no-op under reduced motion.
+function animateCount(el) {
+    const target = parseInt(String(el.textContent).replace(/[^\d-]/g, ""), 10);
+    if (!isFinite(target) || target === 0 || prefersReducedMotion) return;
+    const start = performance.now(), dur = 650;
+    const tick = (t) => {
+        const p = Math.min(1, (t - start) / dur);
+        el.textContent = Math.round(target * (1 - Math.pow(1 - p, 3)));
+        if (p < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+}
+
 function setLoggedInUI(email) {
     actions.hidden = !email;
     userLabel.textContent = email || "";
@@ -267,7 +282,7 @@ function navigate() {
 
 // --- overview -----------------------------------------------------------------
 async function loadOverview() {
-    view().innerHTML = `<div class="card"><p class="muted">Loading overview…</p></div>`;
+    view().innerHTML = spinner("Loading overview…");
     const [s, sl, m] = await Promise.all([
         supabase.from("research_session_summary").select("status,participant_code,final_base_task,final_fatigue_track,started_at").order("started_at", { ascending: false }),
         supabase.from("participant_slots").select("status"),
@@ -312,11 +327,13 @@ async function loadOverview() {
                 <tbody>${recent || `<tr><td colspan="4" class="muted">No sessions yet.</td></tr>`}</tbody>
             </table></div>
         </div>`;
+
+    view().querySelectorAll(".kpi .n").forEach(animateCount);
 }
 
 // --- sessions (+ per-session detail) ------------------------------------------
 async function loadSessions() {
-    view().innerHTML = `<div class="card"><p class="muted">Loading sessions…</p></div>`;
+    view().innerHTML = spinner("Loading sessions…");
     const { data: sessions, error } = await supabase
         .from("research_session_summary").select("*").order("started_at", { ascending: false });
     if (error) { view().innerHTML = errorCard("Could not load sessions", error.message); return; }
@@ -359,7 +376,7 @@ async function loadSessions() {
 
 async function loadDetail(session) {
     const detail = document.getElementById("detail");
-    detail.innerHTML = `<div class="card"><p class="muted">Loading session detail…</p></div>`;
+    detail.innerHTML = spinner("Loading session detail…");
 
     const [{ data: eng, error: engErr }, { data: meas }] = await Promise.all([
         supabase.from("research_engagement_export").select("*").eq("session_id", session.session_id).order("block_number", { ascending: true }),
@@ -426,7 +443,7 @@ async function loadDetail(session) {
 async function loadTestView(key) {
     const cfg = TEST_VIEWS[key];
     if (!cfg) { view().innerHTML = `<div class="card"><p class="muted">Unknown test.</p></div>`; return; }
-    view().innerHTML = `<div class="card"><p class="muted">Loading ${esc(cfg.label)}…</p></div>`;
+    view().innerHTML = spinner(`Loading ${cfg.label}…`);
 
     const LIMIT = 2000;
     const { data, error } = await supabase.from(cfg.view).select("*").limit(LIMIT);
@@ -463,7 +480,7 @@ async function loadTestView(key) {
 
 // --- measurements (manual ECG / physical upload + list) -----------------------
 async function loadMeasurements() {
-    view().innerHTML = `<div class="card"><p class="muted">Loading measurements…</p></div>`;
+    view().innerHTML = spinner("Loading measurements…");
     const [{ data: sessions }, { data: meas, error }] = await Promise.all([
         supabase.from("research_session_summary").select("*").order("started_at", { ascending: false }),
         supabase.from("research_manual_measurements_export").select("*").order("recorded_at", { ascending: false })
@@ -646,7 +663,7 @@ function wireExportCard() {
 
 // --- data quality (go / no-go per session) ------------------------------------
 async function loadQuality() {
-    view().innerHTML = `<div class="card"><p class="muted">Loading data quality…</p></div>`;
+    view().innerHTML = spinner("Loading data quality…");
     const { data: rows, error } = await supabase
         .from("research_session_quality").select("*").order("started_at", { ascending: false });
     if (error) { view().innerHTML = errorCard("Could not load quality view", error.message); return; }
@@ -687,7 +704,7 @@ async function loadQuality() {
 
 // --- participant ID pool ------------------------------------------------------
 async function loadSlots() {
-    view().innerHTML = `<div class="card"><p class="muted">Loading ID pool…</p></div>`;
+    view().innerHTML = spinner("Loading ID pool…");
     const { data: slots, error } = await supabase
         .from("participant_slots").select("*").order("code", { ascending: true });
     if (error) { view().innerHTML = errorCard("Could not load the ID pool", error.message); return; }
