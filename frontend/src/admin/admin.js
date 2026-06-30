@@ -402,12 +402,33 @@ async function loadDetail(session) {
     const detail = document.getElementById("detail");
     detail.innerHTML = spinner("Loading session detail…");
 
-    const [{ data: eng, error: engErr }, { data: meas }] = await Promise.all([
+    const [{ data: eng, error: engErr }, { data: meas }, { data: frames }] = await Promise.all([
         supabase.from("research_engagement_export").select("*").eq("session_id", session.session_id).order("block_number", { ascending: true }),
-        supabase.from("research_manual_measurements_export").select("*").eq("participant_code", session.participant_code).order("recorded_at", { ascending: false })
+        supabase.from("research_manual_measurements_export").select("*").eq("participant_code", session.participant_code).order("recorded_at", { ascending: false }),
+        supabase.from("session_frames").select("*").eq("session_id", session.session_id).order("captured_at", { ascending: true })
     ]);
 
     if (engErr) { detail.innerHTML = errorCard("Could not load detail", engErr.message); return; }
+
+    // Camera snapshots: resolve private storage paths to short-lived signed URLs.
+    let frameGallery = "";
+    const frameRows = frames || [];
+    if (frameRows.length) {
+        const paths = frameRows.map((f) => f.storage_path);
+        const { data: signed } = await supabase.storage.from("session-frames").createSignedUrls(paths, 3600);
+        const urlByPath = {};
+        (signed || []).forEach((s) => { if (s && s.signedUrl && !s.error) urlByPath[s.path] = s.signedUrl; });
+        const thumbs = frameRows.slice(0, 150).map((f) => {
+            const u = urlByPath[f.storage_path];
+            return u
+                ? `<a href="${u}" target="_blank" rel="noopener" title="Block ${esc(f.block_number)} · ${fmtDate(f.captured_at)}"><img src="${u}" loading="lazy" alt="snapshot" style="width:88px; height:auto; border-radius:8px; border:1px solid var(--border); display:block;"></a>`
+                : "";
+        }).join("");
+        frameGallery = `
+            <h2>Camera snapshots (${frameRows.length})</h2>
+            <p class="muted" style="margin-top:0;">Low-resolution attention-verification photos. Private; signed links expire in 1 hour.</p>
+            <div style="display:flex; flex-wrap:wrap; gap:8px;">${thumbs || `<span class="muted">Could not load images.</span>`}</div>`;
+    }
 
     const engRows = (eng || []).map((e) => {
         const att = e.attentive_percent;
@@ -459,6 +480,7 @@ async function loadDetail(session) {
                 <thead><tr><th>Type</th><th>Source</th><th>HR (bpm)</th><th>HRV (ms)</th><th>Value</th><th>Notes</th><th>Recorded</th></tr></thead>
                 <tbody>${measRows || `<tr><td colspan="7" class="muted">No measurements uploaded for this candidate.</td></tr>`}</tbody>
             </table></div>
+            ${frameGallery}
         </div>`;
     detail.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }

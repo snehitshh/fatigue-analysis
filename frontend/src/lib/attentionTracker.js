@@ -33,6 +33,12 @@ export function getLastPose() {
     return lastPose;
 }
 
+// Returns the live <video> element (or null) so the optional snapshot capture can
+// grab frames from the same stream without opening a second camera handle.
+export function getVideoElement() {
+    return video;
+}
+
 // --- Pure helpers (unit-tested) -------------------------------------------------
 
 // Extract head yaw/pitch/roll (degrees) from a column-major 4x4 facial
@@ -130,5 +136,5 @@ function loop() {
 }
 
 if (typeof window !== 'undefined') {
-    window.fatigueAttention = { enableAttention, disableAttention, isAttentionActive, getLastPose };
+    window.fatigueAttention = { enableAttention, disableAttention, isAttentionActive, getLastPose, getVideoElement };
 }

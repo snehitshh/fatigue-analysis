@@ -284,6 +284,18 @@ async function ensureBackendSession() {
         backendState.sessionId = sessionId;
         persistSession();
 
+        // Optional camera snapshots: only when the participant enabled the camera
+        // AND explicitly agreed to photo capture on the camera-consent screen.
+        if (consentData?.camera?.enabled && consentData.camera.saveFrames
+            && window.fatigueAttention?.isAttentionActive?.()) {
+            window.fatigueFrameCapture?.startFrameCapture?.({
+                sessionId,
+                participantCode: getParticipantCode(),
+                getBlock: () => (typeof activeBlock !== 'undefined' ? activeBlock : 0),
+                intervalMs: 15000
+            });
+        }
+
         // Now that a session exists, surface the consent + device context as
         // queryable events (they are also stored in participant.metadata).
         if (consentData) {
@@ -865,6 +877,7 @@ function withdrawStudy() {
         danger: true,
         onConfirm: () => {
             withdrawn = true;
+            window.fatigueFrameCapture?.stopFrameCapture?.();
             window.fatigueAttention?.disableAttention?.(); // release the camera
             recordBackendEvent('participant_withdrew', { atStep: currentStep, block: currentBlock });
             if (backendState.sessionId) getBackendApi()?.finalizeSession?.(backendState.sessionId, 'abandoned');
@@ -1731,6 +1744,7 @@ function showCompletion() {
     clearSession(); // study finished - nothing left to resume
     updateProgress();
     setWithdrawVisible(false);
+    window.fatigueFrameCapture?.stopFrameCapture?.();
     window.fatigueAttention?.disableAttention?.(); // release the camera
     recordBackendEvent('session_completed', { totalBlocks: TOTAL_BLOCKS });
     // Mark the session genuinely completed (status + completed_at) so analysts can

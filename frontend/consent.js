@@ -19,11 +19,17 @@ function mountCameraConsent(container, onDone) {
                 <strong>front camera</strong> during the tasks to estimate whether your head is oriented toward the screen.</p>
                 <h3>What this does</h3>
                 <ul>
-                    <li>Runs entirely <strong>on your device</strong>. No photo or video is recorded, stored, or uploaded.</li>
-                    <li>We keep only an exploratory <strong>screen-oriented / away</strong> estimate, summarised per task.</li>
-                    <li>It is <strong>optional</strong> - you can take part fully without it.</li>
+                    <li>A <strong>screen-oriented / away</strong> estimate is computed on your device and summarised per task.</li>
+                    <li>If you tick the box below, we also save <strong>occasional low-resolution photos</strong>
+                        (about one every 15 seconds) to our secure storage to verify attention. These are
+                        accessible only to the study administrator and are <strong>not public</strong>.</li>
+                    <li>It is <strong>optional</strong> - you can take part fully without the camera.</li>
                     <li>You can revoke camera access at any time in your browser.</li>
                 </ul>
+                <label class="consent-check">
+                    <input type="checkbox" id="camera-save-frames" checked>
+                    <span>I agree to occasional low-resolution photos being saved for attention verification.</span>
+                </label>
                 <p class="field-hint" id="camera-consent-status"></p>
             </div>
             <div class="consent-actions">
@@ -49,7 +55,8 @@ function mountCameraConsent(container, onDone) {
         status.textContent = 'Requesting camera...';
         try {
             await api.enableAttention(); // getUserMedia runs from this click gesture
-            onDone({ enabled: true });
+            const saveFrames = Boolean(document.getElementById('camera-save-frames')?.checked);
+            onDone({ enabled: true, saveFrames });
         } catch (err) {
             status.textContent = 'Camera unavailable or blocked. You can continue without it.';
             enableBtn.disabled = false;
