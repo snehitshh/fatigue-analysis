@@ -17,6 +17,9 @@ Fresh setups do not need a separate step because the same views are included in 
 - `public.research_nasa_tlx_export` - flat NASA-TLX responses.
 - `public.research_physical_export` - flat physical fatigue logs.
 - `public.research_event_export` - session events such as overrides, skipped breaks, and completion.
+- `public.research_fatigue_ratings_export` - pre/post-block KSS ratings with protocol provenance.
+- `public.research_session_protocol_export` - assignment seed, protocol snapshot, build, and participant-slot linkage.
+- `public.research_metric_versions_export` - metric derivation version for every stored interaction record.
 
 Each export includes `participant_code`, `session_code`, and `record_label` so rows are easy to identify by candidate, session, block, and sequence.
 
@@ -63,6 +66,14 @@ NASA-TLX scores by candidate and block:
 select participant_code, session_code, block_number, overall_score
 from public.research_nasa_tlx_export
 order by participant_code, session_code, block_number;
+```
+
+KSS ratings around every block:
+
+```sql
+select participant_code, session_code, block_number, stage, kss_score, recorded_at
+from public.research_fatigue_ratings_export
+order by participant_code, session_code, block_number, stage;
 ```
 
 ## Access Control

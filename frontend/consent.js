@@ -16,11 +16,11 @@ function mountCameraConsent(container, onDone) {
             <div class="block-title">Attention Check (Optional)</div>
             <div class="consent-body">
                 <p>To help us confirm the quality of your data, you can optionally let us use your
-                <strong>front camera</strong> during the tasks to check whether you are looking at the screen.</p>
+                <strong>front camera</strong> during the tasks to estimate whether your head is oriented toward the screen.</p>
                 <h3>What this does</h3>
                 <ul>
                     <li>Runs entirely <strong>on your device</strong>. No photo or video is recorded, stored, or uploaded.</li>
-                    <li>We keep only a simple <strong>looking / not-looking</strong> signal, summarised per task.</li>
+                    <li>We keep only an exploratory <strong>screen-oriented / away</strong> estimate, summarised per task.</li>
                     <li>It is <strong>optional</strong> - you can take part fully without it.</li>
                     <li>You can revoke camera access at any time in your browser.</li>
                 </ul>
@@ -62,32 +62,46 @@ function mountCameraConsent(container, onDone) {
 // onComplete(consentRecord) is called only when the participant explicitly agrees.
 // onDecline() is called when they choose not to take part.
 function mountConsentScreen(container, onComplete, onDecline) {
+    const config = (typeof window !== 'undefined' && window.fatigueStudyConfig) || {};
     container.innerHTML = `
         <div class="consent-container card-screen screen-enter">
             <div class="block-title">Informed Consent</div>
             <div class="consent-body">
                 <p>You are invited to take part in a research study on <strong>fatigue and how it
-                affects human&ndash;computer interaction</strong>. Please read this before you begin.</p>
+                affects human&ndash;computer interaction</strong>, conducted by
+                <strong>${config.institution || 'the configured research institution'}</strong>.
+                Protocol: <strong>${config.protocolId || 'not configured'}</strong>.</p>
 
                 <h3>What you will do</h3>
                 <ul>
                     <li>Complete a short demographics form.</li>
-                    <li>Perform a primary task (tapping or typing) across three blocks of about 10 minutes each.</li>
-                    <li>Rate your workload (NASA-TLX) and complete a cognitive or light physical fatigue task.</li>
+                    <li>Complete tapping or typing measurements across three blocks.</li>
+                    <li>Rate current sleepiness and workload, then complete a cognitive or light physical task.</li>
+                    <li>The full session may take about 45&ndash;75 minutes depending on your assigned tasks and pauses.</li>
                 </ul>
 
                 <h3>Your data</h3>
                 <ul>
-                    <li>Responses are stored under a participant code for research and machine-learning analysis.</li>
+                    <li>Responses are stored under a participant code for ${config.dataUse || 'research analysis'}.</li>
                     <li>We record task performance, timing, and basic device information (screen size, input method).</li>
-                    <li>We do <strong>not</strong> collect your name, contact details, or any directly identifying information.</li>
+                    <li>The dataset is <strong>pseudonymous</strong>, not guaranteed anonymous. Keep your participant code private.</li>
+                    <li>Data retention: ${config.retention || 'not configured'}.</li>
+                    <li>The optional camera check runs on-device; no image or video is uploaded.</li>
+                </ul>
+
+                <h3>Possible discomfort</h3>
+                <ul>
+                    <li>You may experience temporary tiredness, frustration, eye strain, or mild physical exertion.</li>
+                    <li>Pause or stop immediately if you feel pain, dizziness, or unwell.</li>
                 </ul>
 
                 <h3>Your rights</h3>
                 <ul>
                     <li>Participation is <strong>completely voluntary</strong>.</li>
-                    <li>You may <strong>withdraw at any time</strong> using the &ldquo;Withdraw&rdquo; button shown during the study, with no penalty.</li>
+                    <li>You may <strong>withdraw at any time</strong> with no penalty. This stops new collection.</li>
+                    <li>Data already submitted is handled under the approved retention policy. Contact ${config.contact || 'the study team'} about removal requests.</li>
                     <li>If you have a health concern about the physical task, a safety check and an alternative are provided.</li>
+                    <li>Study contact: <strong>${config.contact || 'not configured'}</strong>.</li>
                 </ul>
 
                 <label class="consent-check">

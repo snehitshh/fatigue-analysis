@@ -3,7 +3,8 @@
 // Four dots are shown one at a time in clockwise order (top-left, top-right,
 // bottom-right, bottom-left). The participant taps each. The taps give screen
 // geometry + tap precision; if the camera is on, the head pose captured at each
-// corner gives a per-corner gaze reference used to sharpen "looking at screen".
+// corner captures exploratory device/head-pose context. The current attention
+// classifier does not treat this as validated eye-gaze calibration.
 
 // Clockwise targets inset from the edges by `margin` (fraction of the viewport).
 export function calibrationTargets(w, h, margin = 0.12) {

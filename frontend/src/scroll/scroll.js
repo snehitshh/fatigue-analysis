@@ -7,6 +7,8 @@
 // Supabase as the main study; reuses the participant ID pool.
 import { experimentApi } from "../lib/experimentApi.js";
 import { intervalStats, fatigueTrend } from "./scrollMetrics.js";
+import { createSeed, deriveSeed, seededRandom, METRIC_VERSIONS } from "../lib/researchProtocol.js";
+import { studyConfig, studyConfigIssues } from "../lib/studyConfig.js";
 
 const app = document.getElementById("app");
 const feed = document.getElementById("feed");
@@ -29,6 +31,7 @@ const state = {
     intervals: [],
     intervalIndex: 0,
     sessionStart: 0,
+    intervalStart: 0,
     startedAtISO: null,
     ratingStart: null,
     ratingEnd: null,
@@ -37,7 +40,9 @@ const state = {
     intervalTimer: null,
     countdownTimer: null,
     cardSeed: 0,
-    scrollSessionId: null
+    scrollSessionId: null,
+    protocolSeed: createSeed(),
+    contentRandom: null
 };
 
 const now = () => (window.performance && performance.now ? performance.now() : Date.now());
@@ -57,12 +62,21 @@ function deviceInfo() {
 function showStart() {
     feed.style.display = "none";
     timerBar.style.display = "none";
+    const configIssues = studyConfigIssues(studyConfig);
+    if (configIssues.length) {
+        app.innerHTML = `<div class="center"><div class="card"><h1>Study setup is incomplete</h1>
+            <p class="err">Missing: ${esc(configIssues.join(", "))}</p>
+            <p class="muted">Configure the public study details in .env and rebuild before participant collection.</p></div></div>`;
+        return;
+    }
     app.innerHTML = `
         <div class="center"><div class="card">
             <div class="kicker">Scroll Study</div>
             <h1>Scrolling &amp; fatigue</h1>
             <p class="muted">You'll scroll a feed for the time you choose. We measure how your
             scrolling changes over the session - not what you look at. You can stop any time.</p>
+            <p class="muted"><strong>${esc(studyConfig.institution)}</strong> · Protocol ${esc(studyConfig.protocolId)}<br>
+            Data retention: ${esc(studyConfig.retention)} · Contact: ${esc(studyConfig.contact)}</p>
             <label for="pid">Participant ID</label>
             <input id="pid" type="text" inputmode="text" autocomplete="off" placeholder="ID given by the researcher">
             <label>How long can you take part?</label>
@@ -70,7 +84,7 @@ function showStart() {
                 ${DURATIONS.map((d, i) => `<div class="opt ${i === 0 ? "sel" : ""}" data-min="${d.min}">${d.label}</div>`).join("")}
             </div>
             <label class="check"><input type="checkbox" id="consent-box">
-                <span>I agree to take part and to my scrolling measurements being stored for research.</span></label>
+                <span>I am at least 16, understand the information above, and agree to my pseudonymous scrolling measurements being stored for research.</span></label>
             <div id="start-err" class="err" hidden></div>
             <button class="primary" id="start-btn" disabled>Start</button>
         </div></div>`;
@@ -120,8 +134,8 @@ function showRating(which) {
         <div class="center"><div class="card">
             <div class="kicker">${which === "start" ? "Before you begin" : "One last thing"}</div>
             <h1>How tired do you feel right now?</h1>
-            <p class="muted">1 = very alert, 7 = very tired.</p>
-            <div class="scale" id="scale">${[1, 2, 3, 4, 5, 6, 7].map((n) => `<div class="n" data-n="${n}">${n}</div>`).join("")}</div>
+            <p class="muted">KSS: 1 = extremely alert, 9 = extremely sleepy and fighting sleep.</p>
+            <div class="scale" id="scale">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `<div class="n" data-n="${n}">${n}</div>`).join("")}</div>
             <button class="primary" id="rate-btn" disabled>${which === "start" ? "Begin scrolling" : "Finish"}</button>
         </div></div>`;
     let picked = null;
@@ -140,7 +154,9 @@ function showRating(which) {
 async function startFeed() {
     app.innerHTML = `<div class="center"><div class="card"><h1>Starting…</h1></div></div>`;
     state.sessionStart = now();
+    state.intervalStart = state.sessionStart;
     state.startedAtISO = new Date().toISOString();
+    state.contentRandom = seededRandom(deriveSeed(state.protocolSeed, "scroll-content"));
 
     // Insert the session up front so per-minute intervals can stream in live - a
     // long session that drops part-way keeps everything uploaded so far.
@@ -151,7 +167,7 @@ async function startFeed() {
                 content_mode: state.contentMode,
                 chosen_duration_min: state.durationMin,
                 self_rating_start: state.ratingStart,
-                device_info: deviceInfo(),
+                device_info: { ...deviceInfo(), protocolSeed: state.protocolSeed, metricVersion: METRIC_VERSIONS.scroll },
                 started_at: state.startedAtISO
             });
             state.scrollSessionId = res && res.data && res.data.id;
@@ -194,10 +210,12 @@ function onScroll() {
 }
 
 function finalizeInterval() {
-    const stats = intervalStats(state.samples);
+    const intervalEnd = now();
+    const stats = intervalStats(state.samples, 1500, { startMs: state.intervalStart, endMs: intervalEnd });
     const iv = { interval_index: state.intervalIndex, self_rating: null, ...stats };
     state.intervals.push(iv);
     state.samples = [];
+    state.intervalStart = intervalEnd;
     state.intervalIndex += 1;
     // Live upload (resilient: goes through the durable write-queue on failure).
     if (experimentApi && experimentApi.isSupabaseConfigured && state.scrollSessionId) {
@@ -290,7 +308,8 @@ const WORDS = ("fatigue attention scrolling research interaction pattern signal 
     "behaviour cognitive sample reading focus break rest motion gesture velocity dwell").split(" ");
 function lorem(n) {
     let out = [];
-    for (let i = 0; i < n; i++) out.push(WORDS[Math.floor(Math.random() * WORDS.length)]);
+    const random = state.contentRandom || Math.random;
+    for (let i = 0; i < n; i++) out.push(WORDS[Math.floor(random() * WORDS.length)]);
     const s = out.join(" ");
     return s.charAt(0).toUpperCase() + s.slice(1) + ".";
 }

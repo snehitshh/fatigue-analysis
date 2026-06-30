@@ -25,7 +25,7 @@ let video = null;
 let rafId = null;
 let running = false;
 let lastSampleTs = 0;
-let lastPose = null; // most recent {yaw, pitch, roll}, for calibration sampling
+let lastPose = null; // most recent exploratory {yaw, pitch, roll} sample
 
 // Returns the latest head pose (or null). Used by the 4-dot calibration to record
 // where the participant is looking when they tap each corner.

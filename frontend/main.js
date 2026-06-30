@@ -11,6 +11,8 @@ let sessionBaseTask = null; // 'fitts' or 'typing'
 let sessionFatigueTrack = null; // 'cognitive' or 'physical'
 let originalSessionBaseTask = null;
 let originalSessionFatigueTrack = null;
+let protocolSeed = null;
+let kssRatings = [];
 
 let sessionData = {
     demographics: {},
@@ -24,6 +26,7 @@ let sessionData = {
 let consentData = null;
 let safetyScreeningData = null;
 let withdrawn = false;
+let claimedSlotId = null;
 
 const mainContent = document.getElementById('main-content');
 const progressBar = document.getElementById('progress-bar');
@@ -41,6 +44,10 @@ const backendState = {
 
 function getBackendApi() {
     return window.fatigueExperimentApi || null;
+}
+
+function getResearchApi() {
+    return window.fatigueResearch || {};
 }
 
 function isBackendEnabled() {
@@ -257,8 +264,16 @@ async function ensureBackendSession() {
             original_fatigue_track: originalSessionFatigueTrack || sessionFatigueTrack,
             final_base_task: sessionBaseTask,
             final_fatigue_track: sessionFatigueTrack,
-            app_version: 'v2',
-            device_info: getDeviceInfo()
+            app_version: getResearchApi().PROTOCOL_VERSION || 'v3',
+            device_info: getDeviceInfo(),
+            randomization_seed: protocolSeed,
+            protocol_config: {
+                protocolVersion: getResearchApi().PROTOCOL_VERSION || '3.0.0',
+                metricVersions: getResearchApi().METRIC_VERSIONS || {},
+                kssStages: ['pre_block', 'post_block']
+            },
+            client_build: 'fatigue-id-pro-v3',
+            participant_slot_id: claimedSlotId
         });
 
         if (result.error) {
@@ -275,6 +290,13 @@ async function ensureBackendSession() {
             recordBackendEvent('consent_given', consentData);
         }
         recordBackendEvent('device_context', getDeviceInfo());
+        recordBackendEvent('protocol_assignment', {
+            protocolVersion: getResearchApi().PROTOCOL_VERSION || '3.0.0',
+            seed: protocolSeed,
+            originalBaseTask: originalSessionBaseTask || sessionBaseTask,
+            originalFatigueTrack: originalSessionFatigueTrack || sessionFatigueTrack,
+            metricVersions: getResearchApi().METRIC_VERSIONS || {}
+        });
 
         return backendState.sessionId;
     })().finally(() => {
@@ -338,6 +360,32 @@ async function recordBackendEvent(eventType, payload = {}, elapsedMs = null) {
     if (result.error) {
         logBackendError(`recordSessionEvent:${eventType}`, result.error);
     }
+}
+
+async function saveBackendFatigueRating(rating) {
+    const api = getBackendApi();
+    if (!api || !api.isSupabaseConfigured) return;
+    const sessionId = await ensureBackendSession();
+    if (!sessionId) return;
+
+    if (typeof api.saveFatigueRating === 'function') {
+        const result = await api.saveFatigueRating({
+            session_id: sessionId,
+            block_id: backendState.blockIds[rating.blockNumber] || null,
+            block_number: rating.blockNumber,
+            stage: rating.stage,
+            kss_score: rating.score,
+            kss_label: rating.label,
+            protocol_version: getResearchApi().PROTOCOL_VERSION || '3.0.0',
+            recorded_at: rating.recordedAt,
+            ...getRecordIdentity(`kss_${rating.stage}`, rating.blockNumber)
+        });
+        if (!result.error) return;
+        const missingTable = ['42P01', 'PGRST204', 'PGRST205'].includes(result.error.code);
+        if (!missingTable) logBackendError('saveFatigueRating', result.error);
+    }
+
+    await recordBackendEvent('kss_rating', rating);
 }
 
 async function saveBackendNasaTlxResponse(data, blockNumber) {
@@ -577,6 +625,9 @@ function persistSession() {
             sessionFatigueTrack,
             originalSessionBaseTask,
             originalSessionFatigueTrack,
+            protocolSeed,
+            kssRatings,
+            claimedSlotId,
             backend: {
                 studyId: backendState.studyId,
                 participantId: backendState.participantId,
@@ -618,6 +669,9 @@ function hydrateFromSnapshot(snap) {
     sessionFatigueTrack = snap.sessionFatigueTrack || null;
     originalSessionBaseTask = snap.originalSessionBaseTask || null;
     originalSessionFatigueTrack = snap.originalSessionFatigueTrack || null;
+    protocolSeed = snap.protocolSeed || null;
+    kssRatings = Array.isArray(snap.kssRatings) ? snap.kssRatings : [];
+    claimedSlotId = snap.claimedSlotId || null;
     currentBlock = snap.currentBlock || 1;
     if (snap.backend) {
         backendState.studyId = snap.backend.studyId || null;
@@ -635,6 +689,8 @@ function stepDisplayName(step) {
         'calibration': 'Camera Calibration',
         'demographics': 'Participant Info',
         'experiment-setup': 'Experiment Setup',
+        'kss-pre': 'Pre-block Alertness',
+        'kss-post': 'Post-block Alertness',
         'fitts': 'Fitts Tapping Test',
         'typing': 'Typing Test',
         'nasatlx': 'NASA-TLX Assessment',
@@ -658,6 +714,8 @@ function routeToStep(step) {
         case 'calibration': showDemographics(); break;
         case 'demographics': showDemographics(); break;
         case 'experiment-setup': showExperimentSetup(); break;
+        case 'kss-pre': showPreBlockRating(snapBlockOrCurrent()); break;
+        case 'kss-post': showPostBlockRating(); break;
         case 'fitts': showFittsTest(); break;
         case 'typing': showTypingTest(); break;
         case 'nasatlx': showNASATLX(); break;
@@ -668,6 +726,10 @@ function routeToStep(step) {
         case 'complete': showCompletion(); break;
         default: showConsent();
     }
+}
+
+function snapBlockOrCurrent() {
+    return Math.min(Math.max(currentBlock || 1, 1), TOTAL_BLOCKS);
 }
 
 function showResumePrompt(snap) {
@@ -729,6 +791,20 @@ function showLanding() {
 }
 
 function startParticipant() {
+    const configIssues = window.fatigueStudyConfigIssues || [];
+    if (configIssues.length) {
+        setWithdrawVisible(false);
+        mainContent.innerHTML = `
+            <div class="card-screen screen-enter configuration-required">
+                <div class="block-title">Study setup is incomplete</div>
+                <p>Participant collection is disabled until the public consent details are configured.</p>
+                <p class="form-error">Missing: ${escapeHtml(configIssues.join(', '))}</p>
+                <p>Add the corresponding <code>VITE_STUDY_*</code> values to <code>.env</code>, restart the app, and try again.</p>
+                <button class="button secondary" id="config-back" type="button">Back</button>
+            </div>`;
+        document.getElementById('config-back').onclick = showLanding;
+        return;
+    }
     const saved = loadSession();
     const resumable = saved && saved.consentData
         && saved.currentStep && saved.currentStep !== 'consent' && saved.currentStep !== 'complete';
@@ -808,7 +884,7 @@ function withdrawStudy() {
 // --- NEW: Accidental Refresh Blocker (Modern Standard) ---
 window.addEventListener('beforeunload', function (e) {
     // If the experiment is officially 'complete', let them leave without a warning
-    if (currentStep === 'complete') return; 
+    if (currentStep === 'complete' || !consentData) return;
 
     // Modern browsers require preventDefault() to trigger the generic warning prompt
     e.preventDefault(); 
@@ -848,11 +924,31 @@ function updateProgress() {
             </div>
             <div class="phase-track" aria-hidden="false">${steps}</div>
             <span class="phase-current">${stepDisplayName(currentStep)}</span>
+            <span class="protocol-context">${sessionData.demographics.participantId ? `Participant ${escapeHtml(sessionData.demographics.participantId)} · ` : ''}Block ${activeBlock}/${TOTAL_BLOCKS}</span>
+            <span class="write-status" id="write-status" aria-live="polite">${navigator.onLine ? 'Save status ready' : 'Offline · records will queue'}</span>
         </div>`;
 
     // Save the resume point whenever we enter a new step.
     persistSession();
 }
+
+window.addEventListener('fatigue:write-status', (event) => {
+    const el = document.getElementById('write-status');
+    if (!el) return;
+    const pending = Number(event.detail && event.detail.pending) || 0;
+    const failed = Number(event.detail && event.detail.failed) || 0;
+    el.className = `write-status ${failed ? 'error' : pending ? 'pending' : 'saved'}`;
+    el.textContent = failed
+        ? `${failed} write${failed === 1 ? '' : 's'} need researcher review`
+        : pending
+            ? `${pending} record${pending === 1 ? '' : 's'} queued`
+            : 'All submitted records saved';
+});
+
+window.addEventListener('offline', () => {
+    const el = document.getElementById('write-status');
+    if (el) { el.className = 'write-status pending'; el.textContent = 'Offline · records will queue'; }
+});
 
 
 // --- NEW: Demographics Downloader ---
@@ -884,9 +980,13 @@ function showConsent() {
     updateProgress();
 
     if (typeof mountConsentScreen !== 'function') {
-        // Safety fallback if the consent module failed to load.
-        consentData = { consentGiven: true, consentVersion: 'fallback', agreedAt: new Date().toISOString() };
-        showDemographics();
+        setWithdrawVisible(false);
+        mainContent.innerHTML = `
+            <div class="card-screen screen-enter">
+                <div class="block-title">Consent form unavailable</div>
+                <p>The study cannot begin because the informed-consent module did not load. No data has been collected.</p>
+                <button class="button secondary" type="button" onclick="location.reload()">Reload</button>
+            </div>`;
         return;
     }
 
@@ -998,7 +1098,7 @@ async function claimParticipantCodeOrAllow(code) {
         return { ok: false, reason: 'network' };
     }
     const d = res.data || {};
-    if (d.disabled || d.ok) return { ok: true };
+    if (d.disabled || d.ok) return { ok: true, slotId: d.slot_id || null };
     return { ok: false, reason: d.reason || 'unknown' };
 }
 
@@ -1021,6 +1121,7 @@ function showDemographics() {
                 if (errBox) { errBox.textContent = msg; errBox.hidden = false; }
                 return; // stay on the form so they can correct the ID
             }
+            claimedSlotId = claim.slotId || null;
             downloadDemographicsCSV(data);
             ensureBackendParticipant(data);
             showExperimentSetup();
@@ -1042,16 +1143,11 @@ function showExperimentSetup() {
     
     // --- MODIFIED: Only randomize if they haven't been assigned yet ---
     if (!sessionBaseTask || !sessionFatigueTrack) {
-        // Define the 4 exact combinations (25% probability each)
-        const conditions = [
-            { primary: 'fitts', fatigue: 'cognitive' },
-            { primary: 'typing', fatigue: 'cognitive' },
-            { primary: 'fitts', fatigue: 'physical' },
-            { primary: 'typing', fatigue: 'physical' }
-        ];
-
-        // Pick one randomly
-        const assignedCondition = conditions[Math.floor(Math.random() * conditions.length)];
+        const research = getResearchApi();
+        protocolSeed = protocolSeed || (research.createSeed ? research.createSeed() : `${Date.now()}-${Math.random()}`);
+        const assignedCondition = research.assignCondition
+            ? research.assignCondition(protocolSeed)
+            : { primary: Math.random() < 0.5 ? 'fitts' : 'typing', fatigue: Math.random() < 0.5 ? 'cognitive' : 'physical' };
 
         // Assign to your global session variables
         sessionBaseTask = assignedCondition.primary;
@@ -1111,10 +1207,10 @@ function showExperimentSetup() {
     // Render the UI
     mainContent.innerHTML = `
         <div class="mission-screen screen-enter">
-            <div class="mission-kicker">Protocol Mission</div>
-            <h2 class="mission-title">Assigned Challenge Path</h2>
+            <div class="mission-kicker">Study protocol</div>
+            <h2 class="mission-title">Your assigned task sequence</h2>
             <p class="mission-copy">
-                This path is randomized to prevent selection bias. Your task order stays locked for this session.
+                The assignment is reproducible and remains fixed throughout this session.
             </p>
 
             <div class="mission-card-grid">
@@ -1143,13 +1239,56 @@ function showExperimentSetup() {
             </div>
 
             <div class="mission-footer">
-                <span class="mission-note">Three blocks. Same tests. Cleaner flow.</span>
-                <button class="button primary mission-action" id="start-exp-btn" onclick="startBlock(1)">
-                    Start Block 1
+                <span class="mission-note">Three blocks with alertness ratings before and after each block.</span>
+                <button class="button primary mission-action" id="start-exp-btn" onclick="showPreBlockRating(1)">
+                    Record baseline alertness
                 </button>
             </div>
         </div>
     `;
+}
+
+function storeKssRating(rating) {
+    kssRatings = kssRatings.filter((item) => !(item.blockNumber === rating.blockNumber && item.stage === rating.stage));
+    kssRatings.push(rating);
+    persistSession();
+}
+
+function showPreBlockRating(blockNum) {
+    currentBlock = Math.min(Math.max(Number(blockNum) || 1, 1), TOTAL_BLOCKS);
+    if (kssRatings.some((item) => item.blockNumber === currentBlock && item.stage === 'pre_block')) {
+        startBlock(currentBlock);
+        return;
+    }
+    currentStep = 'kss-pre';
+    updateProgress();
+    if (typeof mountFatigueScale !== 'function') {
+        mainContent.innerHTML = '<div class="card-screen"><div class="block-title">Alertness scale unavailable</div><p>The block cannot start because a required research measure did not load.</p></div>';
+        return;
+    }
+    mountFatigueScale(mainContent, { stage: 'pre_block', blockNumber: currentBlock }, async (rating) => {
+        storeKssRating(rating);
+        await saveBackendFatigueRating(rating);
+        startBlock(currentBlock);
+    });
+}
+
+function showPostBlockRating() {
+    if (kssRatings.some((item) => item.blockNumber === currentBlock && item.stage === 'post_block')) {
+        finishBlock();
+        return;
+    }
+    currentStep = 'kss-post';
+    updateProgress();
+    if (typeof mountFatigueScale !== 'function') {
+        mainContent.innerHTML = '<div class="card-screen"><div class="block-title">Alertness scale unavailable</div><p>The block cannot be finalized because a required research measure did not load.</p></div>';
+        return;
+    }
+    mountFatigueScale(mainContent, { stage: 'post_block', blockNumber: currentBlock }, async (rating) => {
+        storeKssRating(rating);
+        await saveBackendFatigueRating(rating);
+        finishBlock();
+    });
 }
 
 // 3. Block Initialization
@@ -1167,6 +1306,7 @@ function startBlock(blockNum) {
     currentBlock = blockNum;
     
     sessionData.blocks[currentBlock - 1] = {
+        ...(sessionData.blocks[currentBlock - 1] || {}),
         blockNumber: currentBlock,
         startTime: new Date().toISOString(),
         fatigueType: sessionFatigueTrack,
@@ -1196,6 +1336,7 @@ function showFittsTest() {
         showNASATLX();
     }, pid, currentBlock, {
         startMinute,
+        protocolSeed,
         onMinuteComplete: (completed) => {
             // Persist progress after each completed minute so a refresh resumes
             // mid-test instead of restarting the full 10 minutes.
@@ -1219,6 +1360,7 @@ function showTypingTest() {
         showNASATLX();
     }, pid, currentBlock, {
         startMinute,
+        protocolSeed,
         onMinuteComplete: (completed) => {
             sessionData.blocks[currentBlock - 1].primaryProgress = { completedMinutes: completed };
             persistSession();
@@ -1367,8 +1509,8 @@ function showCognitiveTest() {
     mountCognitiveTest(mainContent, (data) => {
         window.fatigueEngagement?.endTest();
         sessionData.blocks[currentBlock - 1].fatigueData = data;
-        finishBlock();
-    }, currentBlock, pid);
+        showPostBlockRating();
+    }, currentBlock, pid, { protocolSeed });
 }
 
 // 8B. Physical Test
@@ -1386,6 +1528,9 @@ function showPhysicalFatigueTest() {
     let pausedDurationSeconds = 0;
     let pauseCount = 0;
     let physicalFinished = false;
+    const studyConfig = window.fatigueStudyConfig || {};
+    const physicalName = studyConfig.physicalProtocolName || 'Configured physical protocol';
+    const physicalInstructions = studyConfig.physicalProtocolInstructions || 'Follow the researcher-approved movement instructions.';
     
     const fmtClock = (totalSeconds) => {
         const m = Math.floor(totalSeconds / 60);
@@ -1399,7 +1544,8 @@ function showPhysicalFatigueTest() {
         const pausedSeconds = pausedDurationSeconds + liveExtraPause;
         mainContent.innerHTML = `
             <div class="physical-test-container" style="text-align:center;">
-                <div class="block-title">Physical Fatigue Exercise</div>
+                <div class="block-title">${escapeHtml(physicalName)}</div>
+                <p class="physical-protocol-instructions">${escapeHtml(physicalInstructions)}</p>
                 <div class="physical-safety-note">
                     Exercise at a comfortable pace. <strong>Stop immediately and use &ldquo;Finish Early&rdquo;
                     if you feel chest pain, dizziness, or unwell.</strong>
@@ -1494,7 +1640,7 @@ function showPhysicalFatigueTest() {
             completedFullDuration
         });
         saveBackendPhysicalFatigueLog(fatigueLog);
-        finishBlock();
+        showPostBlockRating();
     };
     
     updateDisplay();
@@ -1504,12 +1650,12 @@ function showPhysicalFatigueTest() {
 function finishBlock() {
     if (currentBlock < TOTAL_BLOCKS) {
         mainContent.innerHTML = `
-            <div class="checkpoint-screen checkpoint-complete card-screen screen-enter">
-                <div class="checkpoint-kicker">Checkpoint Clear</div>
+        <div class="checkpoint-screen checkpoint-complete card-screen screen-enter">
+                <div class="checkpoint-kicker">Block recorded</div>
                 <div class="completion-badge">OK</div>
                 <h3>Block ${currentBlock} Complete</h3>
                 <p class="checkpoint-copy">${currentBlock} of ${TOTAL_BLOCKS} blocks recorded. Take a moment, then continue when ready.</p>
-                <button class="button primary" onclick="startBlock(${currentBlock + 1})">Continue to Block ${currentBlock + 1}</button>
+                <button class="button primary" onclick="showPreBlockRating(${currentBlock + 1})">Continue to Block ${currentBlock + 1}</button>
             </div>`;
     } else {
         showCompletion();
@@ -1597,4 +1743,3 @@ function downloadResults() {
     document.body.removeChild(link);
     window.URL.revokeObjectURL(link.href);
 }
-

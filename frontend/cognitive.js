@@ -1,4 +1,8 @@
-function mountCognitiveTest(container, onComplete, blockIdx, participantId) {
+function mountCognitiveTest(container, onComplete, blockIdx, participantId, options) {
+    const research = window.fatigueResearch || {};
+    const random = research.seededRandom && options && options.protocolSeed
+        ? research.seededRandom(research.deriveSeed(options.protocolSeed, `cognitive-block-${blockIdx || 1}`))
+        : Math.random;
     window.toggleCognitivePause = () => {
         if (isPaused) {
             // --- RESUME LOGIC ---
@@ -136,7 +140,7 @@ function mountCognitiveTest(container, onComplete, blockIdx, participantId) {
         { type: 'break',  label: 'Rest Period', isPractice: false, duration: BREAK_TIME }
     ];
 
-    let currentPhaseIdx = 0, phaseStartTime = 0, trialStartTime = 0, trialResults = [];
+    let currentPhaseIdx = 0, phaseStartTime = 0, batteryStartTime = 0, trialStartTime = 0, trialResults = [];
     let awaitingResponse = false, trialTimeout = null, phaseTimer = null, lastAxcptCue = null;
 
     let isPaused = false, pauseTimestamp = 0, pauseOverlay = null;
@@ -150,14 +154,20 @@ function mountCognitiveTest(container, onComplete, blockIdx, participantId) {
                 <p><strong>Don't worry, you will have a short practice round first to learn the controls!</strong></p>
                 <button class="button primary" onclick="startBattery()">Start Practice</button>
             </div>`;
-        window.startBattery = () => startPhase(0);
+        window.startBattery = () => {
+            batteryStartTime = performance.now();
+            startPhase(0);
+        };
     }
 
     function startPhase(idx) {
         if (idx >= PHASES.length) { endTest(); return; }
+        if (trialTimeout) { clearTimeout(trialTimeout); trialTimeout = null; }
+        awaitingResponse = false;
         currentPhaseIdx = idx;
         const phase = PHASES[idx];
         phaseStartTime = performance.now();
+        if (phase.type === 'axcpt') lastAxcptCue = null;
         
         if (phase.type === 'break') {
             renderBreakUI(phase);
@@ -244,45 +254,28 @@ function mountCognitiveTest(container, onComplete, blockIdx, participantId) {
         trialStartTime = performance.now();
 
         if (phase.type === 'stroop') {
-            const word = COLORS[Math.floor(Math.random() * COLORS.length)];
-            let color;
-            do { color = COLORS[Math.floor(Math.random() * COLORS.length)]; } while (color.name === word.name);
+            const generated = research.createStroopTrial
+                ? research.createStroopTrial(random)
+                : { condition: 'incongruent', word: 'red', color: 'blue', correctResponse: 'B' };
+            const word = COLORS.find((item) => item.name === generated.word) || COLORS[0];
+            const color = COLORS.find((item) => item.name === generated.color) || COLORS[1];
             stimDiv.textContent = word.label.toUpperCase();
             stimDiv.style.color = color.css;
-            stimDiv.dataset.correct = color.key;
+            stimDiv.dataset.correct = generated.correctResponse;
+            stimDiv.dataset.condition = generated.condition;
+            stimDiv.dataset.stimulusRecord = `${word.name}|ink=${color.name}|condition=${generated.condition}`;
             btnArea.innerHTML = COLORS.map(c => `<button class="cog-btn" style="background:${c.bg}; color:white" onclick="handleResponse('${c.key}')">${c.label}</button>`).join('');
         } else {
-            // AX-CPT Logic
-            let char;
-            const rand = Math.random();
-            
-            if (lastAxcptCue === 'A') { 
-                // 1. If previous was 'A': 70% chance of 'X' (Target), 30% chance of 'Y' (Distractor)
-                char = rand < 0.7 ? 'X' : 'Y'; 
-            } 
-            else if (lastAxcptCue === 'X') {
-                // 2. NEW ANTI-SPAM RULE: If previous was 'X', force a break. Never show X twice.
-                // 50% chance to start a new sequence with 'A', 50% chance for a distractor.
-                char = rand < 0.5 ? 'A' : 'C';
-            }
-            else { 
-                // 3. If previous was any other letter
-                if (rand < 0.35) {
-                    char = 'A'; // 35% chance to show 'A' to set up the next cue
-                } else if (rand < 0.70) {
-                    char = 'X'; // 35% chance to throw the 'X' trap!
-                } else {
-                    // 4. NEW SAFE-RANDOM RULE: explicitly exclude 'A' and 'X' from the random pool
-                    const distractors = ['B', 'D', 'E', 'F', 'G', 'H', 'K', 'M', 'P', 'R', 'Y', 'Z'];
-                    char = distractors[Math.floor(Math.random() * distractors.length)];
-                }
-            }
-
-            const isMatch = (lastAxcptCue === 'A' && char === 'X');
+            const generated = research.createAxcptTrial
+                ? research.createAxcptTrial(lastAxcptCue, random)
+                : { stimulus: 'B', correctResponse: 'N' };
+            const char = generated.stimulus;
             
             stimDiv.innerHTML = `<div class="axcpt-box">${char}</div>`;
             stimDiv.style.color = "#1f2937";
-            stimDiv.dataset.correct = isMatch ? 'M' : 'N';
+            stimDiv.dataset.correct = generated.correctResponse;
+            stimDiv.dataset.condition = generated.correctResponse === 'M' ? 'target' : 'non_target';
+            stimDiv.dataset.stimulusRecord = `${char}|previous=${lastAxcptCue || 'none'}|condition=${stimDiv.dataset.condition}`;
             btnArea.innerHTML = `<button class="cog-btn" style="background:#10b981; color:white;" onclick="handleResponse('M')">Target (M)</button>
                                  <button class="cog-btn" style="background:#ef4444; color:white;" onclick="handleResponse('N')">Non-Target (N)</button>`;
             lastAxcptCue = char;
@@ -298,7 +291,7 @@ function mountCognitiveTest(container, onComplete, blockIdx, participantId) {
         const phase = PHASES[currentPhaseIdx];
         const stimDiv = document.getElementById('cog-stimulus');
         const correctResponse = stimDiv.dataset.correct;
-        const stimulusText = stimDiv.textContent.trim();
+        const stimulusText = stimDiv.dataset.stimulusRecord || stimDiv.textContent.trim();
         const isCorrect = !isTimeout && (response === correctResponse);
         
         // --- REAL-TIME FEEDBACK POP-UP ---
@@ -313,6 +306,7 @@ function mountCognitiveTest(container, onComplete, blockIdx, participantId) {
             const pid = typeof participantId !== 'undefined' ? participantId : (window.participantId || "UNKNOWN");
             const reactionTimeMs = isTimeout ? STIMULUS_TIMEOUT : (performance.now() - trialStartTime);
             const elapsedTimeInPhaseMs = Math.round(performance.now() - phaseStartTime);
+            const elapsedTimeInBatteryMs = Math.round(performance.now() - batteryStartTime);
             const trialRecord = {
                 participantId: pid,
                 block: blockIdx || 1,
@@ -325,7 +319,8 @@ function mountCognitiveTest(container, onComplete, blockIdx, participantId) {
                 correct: isCorrect,
                 timeout: Boolean(isTimeout),
                 rt: reactionTimeMs,
-                elapsedTimeInBlock_ms: elapsedTimeInPhaseMs, // FATIGUE TRACKER
+                elapsedTimeInPhase_ms: elapsedTimeInPhaseMs,
+                elapsedTimeInBlock_ms: elapsedTimeInBatteryMs,
                 timestampReadable: new Date().toISOString() // READABLE TIME
             };
 
@@ -342,7 +337,7 @@ function mountCognitiveTest(container, onComplete, blockIdx, participantId) {
                 isTimeout: Boolean(isTimeout),
                 reactionTimeMs,
                 elapsedTimeInPhaseMs,
-                elapsedTimeInBlockMs: elapsedTimeInPhaseMs
+                elapsedTimeInBlockMs: elapsedTimeInBatteryMs
             });
         }
         
@@ -361,11 +356,11 @@ function mountCognitiveTest(container, onComplete, blockIdx, participantId) {
         if (trialResults.length === 0) return;
         
         // 1. Standardized Research Headers
-        const headers = "participantId,block,testType,phase,correct,reactionTime_ms,elapsed_time_in_block_ms,timestamp_readable";
+        const headers = "participantId,block,testType,phase,stimulus,correctResponse,participantResponse,correct,timeout,reactionTime_ms,elapsed_time_in_phase_ms,elapsed_time_in_battery_ms,timestamp_readable";
         
         // 2. Map data exactly to the headers
         const rows = trialResults.map(r => 
-            `${r.participantId},${r.block},${r.testType},"${r.phase}",${r.correct},${r.rt.toFixed(2)},${r.elapsedTimeInBlock_ms},"${r.timestampReadable}"`
+            `${r.participantId},${r.block},${r.testType},"${r.phase}","${String(r.stimulus).replace(/"/g, '""')}",${r.correctResponse},${r.participantResponse || ''},${r.correct},${r.timeout},${r.rt.toFixed(2)},${r.elapsedTimeInPhase_ms},${r.elapsedTimeInBlock_ms},"${r.timestampReadable}"`
         ).join("\n");
         
         const blob = new Blob([headers + "\n" + rows], { type: 'text/csv' });

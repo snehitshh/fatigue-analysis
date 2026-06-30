@@ -10,6 +10,7 @@ const legacyAssets = [
     "fitts.js",
     "nasatlx.js",
     "cognitive.js",
+    "fatigueScale.js",
     "main.js",
     "corpus.txt"
 ];

@@ -12,10 +12,13 @@ import { toCsv } from "./csv.js";
 
 const EXPORTS = [
     ["research_session_summary", "sessions"],
+    ["research_session_protocol_export", "session_protocol"],
+    ["research_metric_versions_export", "metric_versions"],
     ["research_session_quality", "session_quality"],
     ["research_fitts_export", "fitts_trials"],
     ["research_typing_export", "typing_trials"],
     ["research_nasa_tlx_export", "nasa_tlx"],
+    ["research_fatigue_ratings_export", "fatigue_ratings"],
     ["research_cognitive_export", "cognitive_trials"],
     ["research_physical_export", "physical_fatigue"],
     ["research_engagement_export", "engagement"],
@@ -45,7 +48,7 @@ const userLabel = document.getElementById("admin-user");
 document.getElementById("logout-btn").addEventListener("click", signOut);
 document.getElementById("refresh-btn").addEventListener("click", route);
 
-let candidateCodes = []; // populated from sessions, used for the upload datalist
+let measurementSessions = [];
 
 // --- helpers ------------------------------------------------------------------
 const esc = (v) => String(v == null ? "" : v).replace(/[&<>"']/g, (c) => (
@@ -159,7 +162,7 @@ async function loadDashboard() {
         return;
     }
 
-    candidateCodes = [...new Set((sessions || []).map((s) => s.participant_code).filter(Boolean))];
+    measurementSessions = sessions || [];
 
     const rows = (sessions || []).map((s) => `
         <tr data-session="${esc(s.session_id)}">
@@ -204,7 +207,10 @@ async function loadDashboard() {
 }
 
 function renderUploadCard() {
-    const opts = candidateCodes.map((c) => `<option value="${esc(c)}"></option>`).join("");
+    const opts = measurementSessions.map((session) => `
+        <option value="${esc(session.session_id)}" data-code="${esc(session.participant_code)}">
+            ${esc(session.participant_code)} · ${esc(session.session_code)} · ${fmtDate(session.started_at)}
+        </option>`).join("");
     return `
         <div class="card">
             <div class="kicker">Manual upload</div>
@@ -213,9 +219,11 @@ function renderUploadCard() {
             <form id="upload-form">
                 <div style="display:flex; flex-wrap:wrap; gap:16px;">
                     <div style="flex:1; min-width:200px;">
-                        <label for="m-candidate">Candidate (participant code)</label>
-                        <input id="m-candidate" list="candidate-list" autocomplete="off" required>
-                        <datalist id="candidate-list">${opts}</datalist>
+                        <label for="m-session">Participant session</label>
+                        <select id="m-session" required>
+                            <option value="">Select a session…</option>
+                            ${opts}
+                        </select>
                     </div>
                     <div style="flex:1; min-width:160px;">
                         <label for="m-type">Type</label>
@@ -256,8 +264,11 @@ function wireUploadCard() {
     document.getElementById("upload-form").addEventListener("submit", async (e) => {
         e.preventDefault();
         const msg = document.getElementById("upload-msg");
+        const sessionSelect = document.getElementById("m-session");
+        const selectedSession = measurementSessions.find((session) => String(session.session_id) === sessionSelect.value);
         const built = buildMeasurementPayload({
-            participantCode: document.getElementById("m-candidate").value,
+            participantCode: selectedSession && selectedSession.participant_code,
+            sessionId: selectedSession && selectedSession.session_id,
             type: typeSel.value,
             heartRate: document.getElementById("m-hr").value,
             hrv: document.getElementById("m-hrv").value,
@@ -367,17 +378,17 @@ async function loadQuality() {
     card.innerHTML = `
         <div class="card">
             <div class="kicker">Data quality</div>
-            <h1>Go / no-go per candidate</h1>
+            <h1>Session review</h1>
             <div class="stat-row">
                 <div class="stat"><div class="n good">${counts.good || 0}</div><div class="l">Good</div></div>
                 <div class="stat"><div class="n warn">${counts.warn || 0}</div><div class="l">Review</div></div>
                 <div class="stat"><div class="n warn">${counts.bad || 0}</div><div class="l">Incomplete</div></div>
             </div>
             <div class="scroll-x"><table>
-                <thead><tr><th>Participant</th><th>Quality</th><th>Blocks</th><th>Attentive</th><th>App-switches</th><th>Time away</th></tr></thead>
+                <thead><tr><th>Participant</th><th>Status</th><th>Blocks</th><th>Exploratory attention</th><th>App-switches</th><th>Time away</th></tr></thead>
                 <tbody>${body || `<tr><td colspan="6" class="muted">No sessions yet.</td></tr>`}</tbody>
             </table></div>
-            <p class="notice">Good = finished, attentive, few app-switches. Review = low attention or left the app often. Incomplete = not finished.</p>
+            <p class="notice">Completion and app visibility drive review status. Camera-derived attention is exploratory and must not be used as an automatic exclusion criterion.</p>
         </div>`;
 }
 

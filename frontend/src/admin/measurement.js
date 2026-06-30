@@ -12,7 +12,8 @@ export function buildMeasurementPayload(form) {
         return Number.isFinite(n) ? n : null;
     };
     const notes = form.notes ? String(form.notes).trim() : null;
-    const row = { participant_code: code, measurement_type: type, source: "manual", notes, data: {} };
+    const sessionId = form.sessionId ? String(form.sessionId).trim() : null;
+    const row = { participant_code: code, session_id: sessionId, measurement_type: type, source: "manual", notes, data: {} };
 
     if (type === "ecg") {
         row.heart_rate_bpm = num(form.heartRate);

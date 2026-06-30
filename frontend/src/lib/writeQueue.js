@@ -7,6 +7,7 @@
 //
 // This module is pure storage logic (no network), unit-tested separately.
 const KEY = "fatigueWriteQueue";
+const DEAD_KEY = "fatigueWriteFailures";
 const MAX = 1000;
 
 export function readQueue(storage) {
@@ -31,6 +32,30 @@ export function enqueue(storage, table, row) {
     const q = readQueue(storage);
     q.push({ table, row, ts: Date.now() });
     writeQueue(storage, q);
+}
+
+export function readDeadLetters(storage) {
+    try {
+        const raw = storage.getItem(DEAD_KEY);
+        const rows = raw ? JSON.parse(raw) : [];
+        return Array.isArray(rows) ? rows : [];
+    } catch (e) {
+        return [];
+    }
+}
+
+export function enqueueDeadLetter(storage, item, error) {
+    const rows = readDeadLetters(storage);
+    rows.push({
+        ...item,
+        error: { code: error?.code || null, message: error?.message || String(error || "Unknown error") },
+        failedAt: Date.now()
+    });
+    try { storage.setItem(DEAD_KEY, JSON.stringify(rows.slice(-MAX))); } catch (e) { /* best effort */ }
+}
+
+export function queueSummary(storage) {
+    return { pending: readQueue(storage).length, failed: readDeadLetters(storage).length };
 }
 
 // Decide what to do with an attempted (re)insert result.

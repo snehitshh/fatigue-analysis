@@ -1,12 +1,17 @@
 ﻿import "./recordIdentity.js";
 import { isSupabaseConfigured, supabase } from "./supabaseClient.js";
-import { enqueue, readQueue, writeQueue, classifyResult } from "./writeQueue.js";
+import { enqueue, enqueueDeadLetter, queueSummary, readQueue, writeQueue, classifyResult } from "./writeQueue.js";
 
 const hasLocalStorage = typeof window !== "undefined" && window.localStorage;
 
 // Retry any rows parked by a failed insert. Safe to call often; idempotent because
 // the trial tables have unique constraints (a duplicate retry is treated as done).
 let flushing = false;
+function publishWriteStatus() {
+    if (!hasLocalStorage || typeof window === "undefined") return;
+    window.dispatchEvent(new CustomEvent("fatigue:write-status", { detail: queueSummary(window.localStorage) }));
+}
+
 async function flushWriteQueue() {
     if (!isSupabaseConfigured || flushing || !hasLocalStorage) return;
     flushing = true;
@@ -24,11 +29,15 @@ async function flushWriteQueue() {
             }
             const verdict = classifyResult(error);
             if (verdict === "keep") remaining.push(item);
-            else if (verdict === "drop") console.warn(`[queue] dropping ${item.table}:`, error && error.message);
+            else if (verdict === "drop") {
+                enqueueDeadLetter(window.localStorage, item, error);
+                console.warn(`[queue] retained failed ${item.table} write for review:`, error && error.message);
+            }
         }
         writeQueue(window.localStorage, remaining);
     } finally {
         flushing = false;
+        publishWriteStatus();
     }
 }
 
@@ -57,7 +66,7 @@ function createClientId() {
     });
 }
 
-async function insertRow(tableName, payload) {
+async function insertRow(tableName, payload, options = {}) {
     if (!isSupabaseConfigured) return disabledResult();
 
     const row = {
@@ -78,13 +87,26 @@ async function insertRow(tableName, payload) {
         // Network failure: park the row and report success so the study keeps going;
         // it will be retried on reconnect / next load.
         enqueue(window.localStorage, tableName, row);
+        publishWriteStatus();
         return { data: row, error: null, queued: true, disabled: false };
     }
     if (verdict === "done") {
         flushWriteQueue(); // opportunistically drain the backlog on a good connection
         return { data: row, error: null, disabled: false };
     }
+    if (hasLocalStorage && options.retainPermanent !== false) {
+        enqueueDeadLetter(window.localStorage, { table: tableName, row }, error);
+        publishWriteStatus();
+    }
     return { data: null, error, disabled: false };
+}
+
+async function insertRowWithColumnFallback(tableName, payload, optionalColumns) {
+    const first = await insertRow(tableName, payload, { retainPermanent: false });
+    if (!first.error || !['42703', 'PGRST204'].includes(first.error.code)) return first;
+    const fallback = { ...payload };
+    optionalColumns.forEach((column) => delete fallback[column]);
+    return insertRow(tableName, fallback);
 }
 
 // Atomically claim a researcher-provisioned participant code. Returns the RPC's
@@ -132,7 +154,7 @@ export const experimentApi = {
     finalizeSession,
     finalizeScrollSession,
     createParticipant: (payload) => insertRow("participants", payload),
-    createSession: (payload) => insertRow("sessions", payload),
+    createSession: (payload) => insertRowWithColumnFallback("sessions", payload, ["randomization_seed", "protocol_config", "client_build", "participant_slot_id"]),
     createExperimentBlock: (payload) => insertRow("experiment_blocks", payload),
     recordSessionEvent: (payload) => insertRow("session_events", payload),
     saveFittsTrial: (payload) => insertRow("fitts_trials", payload),
@@ -141,10 +163,10 @@ export const experimentApi = {
     saveCognitiveTrial: (payload) => insertRow("cognitive_trials", payload),
     savePhysicalFatigueLog: (payload) => insertRow("physical_fatigue_logs", payload),
     saveEngagementSummary: (payload) => insertRow("engagement_summary", payload),
+    saveFatigueRating: (payload) => insertRow("fatigue_ratings", payload, { retainPermanent: false }),
     saveScrollSession: (payload) => insertRow("scroll_sessions", payload),
     saveScrollInterval: (payload) => insertRow("scroll_intervals", payload)
 };
 
 window.fatigueExperimentApi = experimentApi;
-
-
+publishWriteStatus();

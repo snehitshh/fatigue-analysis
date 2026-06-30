@@ -2,6 +2,7 @@ function mountTypingTest(container, onComplete, participantId, blockIdx, options
     // options.startMinute resumes a refreshed session from the minute it reached;
     // options.onMinuteComplete(completedMinutes) reports progress for persistence.
     const resumeOptions = options || {};
+    const research = window.fatigueResearch || {};
     let completedMinutes = Number(resumeOptions.startMinute) || 0;
     const TOTAL_MINUTES_NEEDED = 10;
     const TEST_DURATION = 60 * 1000; // 60 seconds
@@ -15,7 +16,9 @@ function mountTypingTest(container, onComplete, participantId, blockIdx, options
     let backspaceCounter = 0;
     let sentenceStartTime = 0;
     let currentSentenceIndex = 0;
+    let submittedSentenceCount = 0;
     let currentTestSentences = [];
+    let corpusCycle = 0;
     let testIsActive = false;
 
     // Detect whether the participant is on an on-screen (virtual) keyboard so the
@@ -55,8 +58,12 @@ function mountTypingTest(container, onComplete, participantId, blockIdx, options
 
     function startTest() {
         testStartTime = 0; 
-        currentTestSentences = [...allCorpusSentences].sort(() => 0.5 - Math.random());
+        corpusCycle = 0;
+        currentTestSentences = research.shuffleWithSeed && resumeOptions.protocolSeed
+            ? research.shuffleWithSeed(allCorpusSentences, research.deriveSeed(resumeOptions.protocolSeed, `typing-${blockIdx || 1}-${completedMinutes + 1}-${corpusCycle}`))
+            : [...allCorpusSentences].sort(() => 0.5 - Math.random());
         currentSentenceIndex = 0;
+        submittedSentenceCount = 0;
         logs = [];
         showTestInterface();
     }
@@ -144,7 +151,10 @@ function mountTypingTest(container, onComplete, participantId, blockIdx, options
 
     function displayNextSentence() {
         if (currentSentenceIndex >= currentTestSentences.length) {
-            currentTestSentences = [...allCorpusSentences].sort(() => 0.5 - Math.random());
+            corpusCycle++;
+            currentTestSentences = research.shuffleWithSeed && resumeOptions.protocolSeed
+                ? research.shuffleWithSeed(allCorpusSentences, research.deriveSeed(resumeOptions.protocolSeed, `typing-${blockIdx || 1}-${completedMinutes + 1}-${corpusCycle}`))
+                : [...allCorpusSentences].sort(() => 0.5 - Math.random());
             currentSentenceIndex = 0;
         }
         document.getElementById('typing-input').value = '';
@@ -192,13 +202,22 @@ function submitSentence() {
             return;
         }
 
-        const metrics = calculateMetrics(originalSentence, typedText, currentKeyTimestamps, backspaceCounter, sentenceStartTime);
+        const durationMs = Math.round(performance.now() - sentenceStartTime);
+        const metrics = research.calculateTypingMetrics
+            ? research.calculateTypingMetrics({
+                original: originalSentence,
+                typed: typedText,
+                keyTimestamps: currentKeyTimestamps,
+                backspaces: backspaceCounter,
+                durationMs
+            })
+            : calculateMetrics(originalSentence, typedText, currentKeyTimestamps, backspaceCounter, sentenceStartTime);
         
         // --- NEW: Calculate exact elapsed time within the 1-minute block ---
         const elapsedTimeInBlock = Math.round(performance.now() - testStartTime);
 
         const minuteNumber = completedMinutes + 1;
-        const sentenceNumber = currentSentenceIndex + 1;
+        const sentenceNumber = ++submittedSentenceCount;
         const trialRecord = {
             participantId: participantId,
             block: blockIdx || 1,
@@ -212,7 +231,7 @@ function submitSentence() {
             iki: metrics.iki,
             kspc: metrics.kspc,
             backspaceCount: metrics.backspaceCount,
-            durationMs: Math.round(performance.now() - sentenceStartTime),
+            durationMs,
             elapsedTimeInBlock_ms: elapsedTimeInBlock, // FATIGUE METRIC
             timestampReadable: new Date().toISOString()
         };

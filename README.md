@@ -55,6 +55,8 @@ Everything runs on a single **Supabase** (Postgres) backend with row-level secur
 
 **Workload:** NASA-TLX (6 dimensions) after each block.
 
+**Current sleepiness:** Karolinska Sleepiness Scale (KSS, 1-9) immediately before and after every block. NASA-TLX remains a workload measure and is not treated as the fatigue label.
+
 **Engagement / attention validation** (rides along every test):
 
 - **App-switch / time-away** (Page Visibility) — did they leave the app mid-test, and for how long.
@@ -75,6 +77,7 @@ Consent  →  Camera opt-in  →  (4-dot calibration, if camera)  →  Demograph
 
 - A persistent **Withdraw** button is available throughout.
 - **Session resume:** a refresh or disconnect restores the exact step (long tasks resume by completed minute), with no duplicate data.
+- **Reproducible protocol:** condition and stimulus randomization derive from a stored session seed; derived metrics are versioned.
 - The whole thing is **mobile-friendly** and themed as a dark-glass "research console" over an animated lab backdrop.
 
 ---
@@ -246,6 +249,7 @@ authenticated by a device key, inserted server-side with the service role. See
 | `fitts_trials`, `typing_trials`, `nasa_tlx_responses`, `cognitive_trials`, `physical_fatigue_logs` | per-trial task results |
 | `session_events` | protocol deviations (pause, skip, override, withdraw, app-switch, consent, calibration) |
 | `engagement_summary` | per-test app-switch + camera-attention validation |
+| `fatigue_ratings` | pre/post-block KSS sleepiness ratings |
 | `manual_measurements` | ECG / manual physical / Raspberry-Pi uploads |
 | `participant_slots` | the provided-ID pool (status + revoke/reuse) |
 | `scroll_sessions`, `scroll_intervals` | scroll-fatigue study |
@@ -259,9 +263,11 @@ Researchers read flat data from the `research_*_export` views. Every result carr
 
 - **Consent first** — nothing starts before informed consent; participants can withdraw at any time.
 - **Camera is opt-in** and processed **entirely on-device** — no image or video is ever stored or uploaded, only a looking/not-looking signal.
-- **Anonymous IDs** — no names or contact details; data is keyed by a participant code you control.
+- **Pseudonymous IDs** — names are not requested in the participant form, but participant codes and device context mean the dataset must not be described as guaranteed anonymous.
 - **Least privilege** — the public app is insert-only behind RLS; only authenticated researchers read; devices upload through a key-guarded function; secrets never reach the browser.
 - **Safety screening** (PAR-Q) gates the physical task, with a cognitive alternative.
+
+Before participant collection, configure the public consent fields documented in `.env.example` and complete `docs/research/PILOT_CHECKLIST.md`. Protocol v3 and metric definitions are documented under `docs/research/`.
 
 ---
 

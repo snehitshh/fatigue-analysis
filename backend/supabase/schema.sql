@@ -74,6 +74,10 @@ create table if not exists public.sessions (
     final_fatigue_track public.fatigue_track_type not null,
     app_version text not null default 'v2',
     device_info jsonb not null default '{}'::jsonb,
+    randomization_seed text,
+    protocol_config jsonb not null default '{}'::jsonb,
+    client_build text,
+    participant_slot_id uuid,
     started_at timestamptz not null default now(),
     completed_at timestamptz,
     notes text
@@ -122,6 +126,7 @@ create table if not exists public.fitts_trials (
     elapsed_time_in_block_ms integer check (elapsed_time_in_block_ms is null or elapsed_time_in_block_ms >= 0),
     success boolean not null,
     input_method text,
+    metric_version text not null default 'fitts-v3',
     created_at timestamptz not null default now(),
     unique (session_id, block_number, minute_number, trial_in_minute)
 );
@@ -144,6 +149,7 @@ create table if not exists public.typing_trials (
     duration_ms integer check (duration_ms is null or duration_ms >= 0),
     elapsed_time_in_block_ms integer check (elapsed_time_in_block_ms is null or elapsed_time_in_block_ms >= 0),
     input_method text,
+    metric_version text not null default 'typing-v3',
     created_at timestamptz not null default now(),
     unique (session_id, block_number, minute_number, sentence_number)
 );
@@ -190,6 +196,7 @@ create table if not exists public.cognitive_trials (
     elapsed_time_in_block_ms integer check (elapsed_time_in_block_ms is null or elapsed_time_in_block_ms >= 0),
     is_timeout boolean not null default false,
     input_method text,
+    metric_version text not null default 'cognitive-v3',
     created_at timestamptz not null default now(),
     unique (session_id, block_number, test_type, phase_label, trial_number)
 );
@@ -803,6 +810,7 @@ create table if not exists public.engagement_summary (
     participant_code text,
     session_code text,
     record_label text,
+    metric_version text not null default 'attention-exploratory-v1',
     created_at timestamptz not null default now()
 );
 
@@ -864,6 +872,92 @@ revoke all on public.research_engagement_export from anon;
 grant select on public.research_engagement_export to authenticated;
 
 comment on view public.research_engagement_export is 'Flat per-test engagement/validation export (app-switch / time-away + opt-in camera attention).';
+
+-- Karolinska Sleepiness Scale ratings immediately before and after each block.
+create table if not exists public.fatigue_ratings (
+    id uuid primary key default gen_random_uuid(),
+    session_id uuid not null references public.sessions(id) on delete cascade,
+    block_id uuid references public.experiment_blocks(id) on delete set null,
+    block_number integer not null check (block_number between 1 and 3),
+    stage text not null check (stage in ('pre_block', 'post_block')),
+    kss_score integer not null check (kss_score between 1 and 9),
+    kss_label text not null,
+    protocol_version text not null default '3.0.0',
+    participant_code text,
+    session_code text,
+    record_label text,
+    recorded_at timestamptz not null default now(),
+    created_at timestamptz not null default now(),
+    unique (session_id, block_number, stage)
+);
+
+create index if not exists idx_fatigue_ratings_session_block
+    on public.fatigue_ratings(session_id, block_number, stage);
+
+alter table public.fatigue_ratings enable row level security;
+grant insert on public.fatigue_ratings to anon;
+grant select on public.fatigue_ratings to authenticated;
+
+drop policy if exists "anon insert fatigue ratings" on public.fatigue_ratings;
+create policy "anon insert fatigue ratings" on public.fatigue_ratings
+for insert to anon with check (true);
+
+drop policy if exists "researchers read fatigue ratings" on public.fatigue_ratings;
+create policy "researchers read fatigue ratings" on public.fatigue_ratings
+for select to authenticated using (
+    exists (
+        select 1 from public.researcher_profiles rp
+        where rp.user_id = (select auth.uid())
+          and rp.role in ('admin', 'researcher', 'viewer')
+    )
+);
+
+drop view if exists public.research_fatigue_ratings_export;
+create view public.research_fatigue_ratings_export
+with (security_invoker = true) as
+select
+    fr.id, fr.session_id, fr.block_id,
+    coalesce(fr.participant_code, p.participant_code) as participant_code,
+    coalesce(fr.session_code, s.session_code) as session_code,
+    fr.block_number, fr.stage, fr.kss_score, fr.kss_label,
+    fr.protocol_version, s.randomization_seed, s.protocol_config,
+    fr.recorded_at, fr.created_at
+from public.fatigue_ratings fr
+join public.sessions s on s.id = fr.session_id
+join public.participants p on p.id = s.participant_id;
+
+revoke all on public.research_fatigue_ratings_export from public, anon;
+grant select on public.research_fatigue_ratings_export to authenticated;
+
+comment on view public.research_fatigue_ratings_export is 'Pre/post-block KSS ratings with protocol provenance.';
+
+drop view if exists public.research_session_protocol_export;
+create view public.research_session_protocol_export
+with (security_invoker = true) as
+select
+    s.id as session_id, p.participant_code, s.session_code,
+    s.randomization_seed, s.protocol_config, s.client_build, s.participant_slot_id,
+    s.original_base_task, s.original_fatigue_track,
+    s.final_base_task, s.final_fatigue_track,
+    s.started_at, s.completed_at
+from public.sessions s
+join public.participants p on p.id = s.participant_id;
+revoke all on public.research_session_protocol_export from public, anon;
+grant select on public.research_session_protocol_export to authenticated;
+
+comment on view public.research_session_protocol_export is 'Session assignment seed, metric versions, build, and participant-slot linkage.';
+
+drop view if exists public.research_metric_versions_export;
+create view public.research_metric_versions_export
+with (security_invoker = true) as
+select 'fitts'::text as dataset, id as record_id, session_id, block_number, metric_version from public.fitts_trials
+union all select 'typing', id, session_id, block_number, metric_version from public.typing_trials
+union all select 'cognitive', id, session_id, block_number, metric_version from public.cognitive_trials
+union all select 'engagement', id, session_id, block_number, metric_version from public.engagement_summary;
+revoke all on public.research_metric_versions_export from public, anon;
+grant select on public.research_metric_versions_export to authenticated;
+
+comment on view public.research_metric_versions_export is 'Metric derivation version per stored record.';
 
 -- Manual + device measurements (ECG / manual physical / Raspberry Pi), written by
 -- authenticated researchers from the admin console.
@@ -965,6 +1059,14 @@ create table if not exists public.participant_slots (
 
 create index if not exists idx_participant_slots_status on public.participant_slots(status);
 
+do $$ begin
+    if not exists (select 1 from pg_constraint where conname = 'sessions_participant_slot_id_fkey') then
+        alter table public.sessions
+            add constraint sessions_participant_slot_id_fkey
+            foreign key (participant_slot_id) references public.participant_slots(id) on delete set null;
+    end if;
+end $$;
+
 alter table public.participant_slots enable row level security;
 grant select, insert, update on public.participant_slots to authenticated;
 
@@ -1026,8 +1128,8 @@ create table if not exists public.scroll_sessions (
     mean_speed_px_s numeric(12, 2),
     speed_drop_pct numeric(6, 2),
     pause_rise_pct numeric(8, 2),
-    self_rating_start integer check (self_rating_start is null or self_rating_start between 1 and 7),
-    self_rating_end integer check (self_rating_end is null or self_rating_end between 1 and 7),
+    self_rating_start integer check (self_rating_start is null or self_rating_start between 1 and 9),
+    self_rating_end integer check (self_rating_end is null or self_rating_end between 1 and 9),
     device_info jsonb not null default '{}'::jsonb,
     participant_code_label text,
     record_label text,
@@ -1047,7 +1149,8 @@ create table if not exists public.scroll_intervals (
     mean_speed_px_s numeric(12, 2),
     max_speed_px_s numeric(12, 2),
     pause_count integer,
-    self_rating integer check (self_rating is null or self_rating between 1 and 7),
+    self_rating integer check (self_rating is null or self_rating between 1 and 9),
+    metric_version text not null default 'scroll-v3',
     created_at timestamptz not null default now(),
     unique (scroll_session_id, interval_index)
 );
@@ -1118,6 +1221,12 @@ begin
         set status = p_status::public.session_status,
             completed_at = case when p_status = 'completed' then now() else completed_at end
         where id = p_session_id;
+    if p_status = 'completed' then
+        update public.participant_slots ps
+            set status = 'completed', session_id = p_session_id, completed_at = now()
+            from public.sessions s
+            where s.id = p_session_id and ps.id = s.participant_slot_id;
+    end if;
 end; $$;
 revoke all on function public.finalize_session(uuid, text) from public;
 grant execute on function public.finalize_session(uuid, text) to anon, authenticated;
@@ -1140,10 +1249,36 @@ end; $$;
 revoke all on function public.finalize_scroll_session(uuid, jsonb) from public;
 grant execute on function public.finalize_scroll_session(uuid, jsonb) to anon, authenticated;
 
+-- Capability-token storage for the future validated experiment-ingest Edge
+-- Function. No Data API role can read or write this table directly.
+create table if not exists public.experiment_capabilities (
+    session_id uuid primary key references public.sessions(id) on delete cascade,
+    token_hash text not null unique,
+    expires_at timestamptz not null,
+    revoked_at timestamptz,
+    created_at timestamptz not null default now()
+);
+alter table public.experiment_capabilities enable row level security;
+revoke all on public.experiment_capabilities from public, anon, authenticated;
+
 -- Per-session data-quality snapshot (completion + attention + app-switch signals).
 drop view if exists public.research_session_quality;
-create or replace view public.research_session_quality
+create view public.research_session_quality
 with (security_invoker = true) as
+with block_counts as (
+    select session_id, count(*) as blocks_started
+    from public.experiment_blocks
+    group by session_id
+), engagement as (
+    select
+        session_id,
+        count(*) as tests_monitored,
+        round(avg(attentive_percent) filter (where camera_used), 1) as avg_attentive_pct,
+        coalesce(sum(app_switch_count), 0) as total_app_switches,
+        coalesce(sum(total_away_ms), 0) as total_away_ms
+    from public.engagement_summary
+    group by session_id
+)
 select
     s.id as session_id,
     p.participant_code,
@@ -1151,18 +1286,17 @@ select
     (s.status = 'completed') as completed,
     s.final_base_task::text as final_base_task,
     s.final_fatigue_track::text as final_fatigue_track,
-    count(distinct b.id) as blocks_started,
-    count(es.id) as tests_monitored,
-    round(avg(es.attentive_percent) filter (where es.camera_used), 1) as avg_attentive_pct,
-    coalesce(sum(es.app_switch_count), 0) as total_app_switches,
-    coalesce(sum(es.total_away_ms), 0) as total_away_ms,
+    coalesce(bc.blocks_started, 0) as blocks_started,
+    coalesce(e.tests_monitored, 0) as tests_monitored,
+    e.avg_attentive_pct,
+    coalesce(e.total_app_switches, 0) as total_app_switches,
+    coalesce(e.total_away_ms, 0) as total_away_ms,
     s.started_at,
     s.completed_at
 from public.sessions s
 join public.participants p on p.id = s.participant_id
-left join public.experiment_blocks b on b.session_id = s.id
-left join public.engagement_summary es on es.session_id = s.id
-group by s.id, p.participant_code, s.status, s.final_base_task, s.final_fatigue_track, s.started_at, s.completed_at;
+left join block_counts bc on bc.session_id = s.id
+left join engagement e on e.session_id = s.id;
 
 revoke all on public.research_session_quality from public;
 revoke all on public.research_session_quality from anon;

@@ -7,10 +7,13 @@
 const round2 = (n) => Math.round(n * 100) / 100;
 
 // samples: [{ y, t }] scroll position (px) + timestamp (ms), in order.
-export function intervalStats(samples, pauseThresholdMs = 1500) {
+export function intervalStats(samples, pauseThresholdMs = 1500, bounds = {}) {
     const n = samples ? samples.length : 0;
+    const startMs = Number.isFinite(bounds.startMs) ? bounds.startMs : (n ? samples[0].t : 0);
+    const endMs = Number.isFinite(bounds.endMs) ? bounds.endMs : (n ? samples[n - 1].t : startMs);
     if (n < 2) {
-        return { distancePx: 0, scrollEvents: Math.max(0, n), reversals: 0, meanSpeedPxS: 0, maxSpeedPxS: 0, pauseCount: 0 };
+        const idle = endMs - startMs;
+        return { distancePx: 0, scrollEvents: Math.max(0, n), reversals: 0, meanSpeedPxS: 0, maxSpeedPxS: 0, pauseCount: idle > pauseThresholdMs ? 1 : 0 };
     }
     let distance = 0, reversals = 0, maxSpeed = 0, pauseCount = 0, lastDir = 0;
     for (let i = 1; i < n; i++) {
@@ -28,7 +31,9 @@ export function intervalStats(samples, pauseThresholdMs = 1500) {
         }
         if (dt > pauseThresholdMs) pauseCount++;
     }
-    const spanMs = samples[n - 1].t - samples[0].t;
+    if (samples[0].t - startMs > pauseThresholdMs) pauseCount++;
+    if (endMs - samples[n - 1].t > pauseThresholdMs) pauseCount++;
+    const spanMs = Math.max(0, endMs - startMs);
     const meanSpeed = spanMs > 0 ? distance / (spanMs / 1000) : 0;
     return {
         distancePx: round2(distance),

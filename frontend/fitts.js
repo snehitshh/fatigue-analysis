@@ -4,6 +4,8 @@ function mountFittsTest(container, onComplete, participantId, blockIdx, options)
     // reached; options.onMinuteComplete(completedMinutes) reports progress so the
     // orchestrator can persist it for refresh recovery.
     const resumeOptions = options || {};
+    const research = window.fatigueResearch || {};
+    let random = Math.random;
     let completedMinutes = Number(resumeOptions.startMinute) || 0;
     const TOTAL_MINUTES_NEEDED = 10;
     let animationActive = false;
@@ -26,7 +28,6 @@ function mountFittsTest(container, onComplete, participantId, blockIdx, options)
     let arenaScale = 1;
     let lastInputMethod = null; // 'mouse' | 'pen' | 'touch', captured per pointer
 
-    const MAX_MISCLICKS = 3;
     const COLOR_TARGET = "#107046", COLOR_TARGET_BORDER = "#03422c";
     const DIALOG_TIMEOUT = 1000;
 
@@ -63,6 +64,7 @@ function mountFittsTest(container, onComplete, participantId, blockIdx, options)
     let greenTargetsClicked = 0;
     let misclickCount = 0;
     let trialStartTime = 0;
+    let movementStartTime = 0;
 
     function showPopupNotification(msg, anchorIdOrElem) {
         let arena = typeof anchorIdOrElem === "string" ? document.getElementById(anchorIdOrElem) : anchorIdOrElem;
@@ -118,6 +120,9 @@ function mountFittsTest(container, onComplete, participantId, blockIdx, options)
     }
 
 function startTest() {
+        random = research.seededRandom && resumeOptions.protocolSeed
+            ? research.seededRandom(research.deriveSeed(resumeOptions.protocolSeed, `fitts-block-${blockIdx || 1}-minute-${completedMinutes + 1}`))
+            : Math.random;
         testStartTime = 0; // Wait for first click
         trialIdx = 0;
         trialData = [];
@@ -156,7 +161,7 @@ function startTest() {
                 <div id="fitts-arena" style="position:relative; width:${arenaSize}px; height:${arenaSize}px; max-width:100%; border:1px solid #ccc; margin:auto; background: #fff; cursor: crosshair; touch-action:none; user-select:none;"></div>
                 <div class="test-controls">
                     <button id="pause-btn" class="button secondary" onclick="togglePause()">Pause</button>
-                    <div class="trial-info"><span id="misclick-counter">Misclicks: 0/${MAX_MISCLICKS}</span></div>
+                    <div class="trial-info"><span id="misclick-counter">Misclicks: 0</span></div>
                 </div>
             </div>`;
         window.togglePause = togglePause;
@@ -195,6 +200,10 @@ function startTest() {
                 const exactDistance = Math.sqrt(dx * dx + dy * dy);
                 const moveID = Math.log2((exactDistance / currentTrial.targetSize) + 1);
                 currentTrial.sumOfID += moveID;
+            } else {
+                // The first target is an acquisition step. Fitts movement timing
+                // begins only after it has been acquired.
+                movementStartTime = performance.now();
             }
             currentTrial.lastTarget = target;
 
@@ -221,9 +230,6 @@ function startTest() {
                 misclickCount++;
                 updateMisclickCounter();
                 spawnFittsRipple(event.clientX, event.clientY, 'miss'); // after the misclick is counted
-                if (misclickCount > MAX_MISCLICKS) {
-                    handleHardStop("Limit Exceeded!");
-                }
             }
         }
     }
@@ -261,6 +267,7 @@ function startTest() {
         initializeTrial();
         trialActive = true; 
         trialStartTime = performance.now();
+        movementStartTime = 0;
         
         if (!animationActive && testStartTime > 0) {
             animationActive = true;
@@ -272,7 +279,7 @@ function startTest() {
         greenTargetsClicked = 0;
         misclickCount = 0;
         
-        const randomLevel = Math.floor(Math.random() * 5) + 1;
+        const randomLevel = Math.floor(random() * 5) + 1;
         const config = LEVELS[randomLevel];
         // Scale the authored geometry to the real rendered arena. Ratio (and thus
         // the Fitts index of difficulty) is preserved; only absolute pixels change.
@@ -290,7 +297,7 @@ function startTest() {
 
         // --- Smart random jumps with short-term memory (Crash-Proof) ---
         let sequence = [];
-        let currentIdx = Math.floor(Math.random() * numTargets); 
+        let currentIdx = Math.floor(random() * numTargets);
         sequence.push(currentIdx);
 
         for (let i = 1; i < numTargets; i++) {
@@ -311,7 +318,7 @@ function startTest() {
             if (validNextTargets.length === 0) {
                 currentIdx = (currentIdx + 5) % numTargets; 
             } else {
-                currentIdx = validNextTargets[Math.floor(Math.random() * validNextTargets.length)];
+                currentIdx = validNextTargets[Math.floor(random() * validNextTargets.length)];
             }
             
             sequence.push(currentIdx);
@@ -354,7 +361,7 @@ function startTest() {
 
     function updateMisclickCounter() {
         const counterElement = document.getElementById('misclick-counter');
-        if (counterElement) counterElement.textContent = `Misclicks: ${misclickCount}/${MAX_MISCLICKS}`;
+        if (counterElement) counterElement.textContent = `Misclicks: ${misclickCount}`;
     }
 
     function handleHardStop(reason) {
@@ -368,7 +375,7 @@ function startTest() {
 
     function completeTrialSuccess() {
         trialActive = false; 
-        const totalTime = performance.now() - trialStartTime;
+        const totalTime = movementStartTime ? performance.now() - movementStartTime : 0;
         recordTrial(true, totalTime, 11);
         showPopupNotification("Set Complete!", document.getElementById('fitts-arena'));
         trialIdx++;
@@ -382,19 +389,10 @@ function startTest() {
 
   function recordTrial(success, time, clickedCount) {
         if (clickedCount <= 1) return; 
-
-        const totalID = currentTrial.sumOfID;
-        const moves = clickedCount - 1; 
-        const avgID = (totalID / moves).toFixed(4);
-        const throughput = (totalID / (time / 1000)).toFixed(4);
-
-        // --- NEW: Fatigue Metrics ---
-        // 1. Average Movement Time (Gets slower with physical fatigue)
-        const avgMovementTime = (time / clickedCount).toFixed(2);
-        
-        // 2. Error Rate Percentage (Increases with cognitive/attention fatigue)
-        const totalAttempts = clickedCount + misclickCount;
-        const errorRate = totalAttempts > 0 ? ((misclickCount / totalAttempts) * 100).toFixed(2) : 0;
+        const metrics = research.calculateFittsMetrics
+            ? research.calculateFittsMetrics({ sumOfId: currentTrial.sumOfID, movementTimeMs: time, clicks: clickedCount, misclicks: misclickCount })
+            : null;
+        if (!metrics) return;
         
         // 3. Exact Elapsed Time in Block (Tracks micro-fatigue within the 60s)
         const elapsedTimeInBlock = Math.round(performance.now() - testStartTime);
@@ -403,16 +401,17 @@ function startTest() {
         const trialInMinute = trialIdx + 1;
         const trialRecord = {
             participantId,
-            block: minuteNumber, // Dynamically tags which minute they are in
+            block: blockIdx || 1,
+            minuteSet: minuteNumber,
             trialInBlock: trialInMinute,
             difficultyLevel: currentTrial.level,
-            indexOfDifficulty: avgID,
+            indexOfDifficulty: metrics.avgIndexOfDifficulty,
             targetsClicked: clickedCount,
             misclicks: misclickCount,
             totalTime_ms: time.toFixed(2),
-            throughput_bps: throughput,
-            avgMovementTime_ms: avgMovementTime,       // NEW
-            errorRate_percent: errorRate,              // NEW
+            throughput_bps: metrics.throughputBps,
+            avgMovementTime_ms: metrics.avgMovementTimeMs,
+            errorRate_percent: metrics.errorRatePercent,
             elapsedTimeInBlock_ms: elapsedTimeInBlock, // NEW
             success,
             timestampReadable: new Date().toISOString() // NEW: Clean, readable timestamp
@@ -429,13 +428,13 @@ function startTest() {
             renderedArenaWidthPx: arenaSize,
             renderedArenaHeightPx: arenaSize,
             inputMethod: lastInputMethod,
-            avgIndexOfDifficulty: avgID,
+            avgIndexOfDifficulty: metrics.avgIndexOfDifficulty,
             targetsClicked: clickedCount,
             misclicks: misclickCount,
             totalTimeMs: Number(time.toFixed(2)),
-            throughputBps: throughput,
-            avgMovementTimeMs: avgMovementTime,
-            errorRatePercent: errorRate,
+            throughputBps: metrics.throughputBps,
+            avgMovementTimeMs: metrics.avgMovementTimeMs,
+            errorRatePercent: metrics.errorRatePercent,
             elapsedTimeInBlockMs: elapsedTimeInBlock,
             success
         });
@@ -453,7 +452,7 @@ function startTest() {
 
         // Save whatever progress they made if the timer ran out mid-set
         if (greenTargetsClicked > 1 && currentTrial) {
-            const timeSpent = performance.now() - trialStartTime;
+            const timeSpent = movementStartTime ? performance.now() - movementStartTime : 0;
             recordTrial(false, timeSpent, greenTargetsClicked);
         }
 
@@ -503,10 +502,10 @@ function downloadCSV(data, fileName) {
         if (!data.length) return;
         
         // --- NEW: Refined Research Headers ---
-        const headers = "participantId,block,trialInSet,difficultyLevel,avgIndexOfDifficulty,targetsClicked,misclicks,totalTime_ms,throughput_bps,avg_MT_ms,error_rate_%,elapsed_time_in_block_ms,success,timestamp_readable";
+        const headers = "participantId,block,minuteSet,trialInSet,difficultyLevel,avgIndexOfDifficulty,targetsClicked,misclicks,totalTime_ms,throughput_bps,avg_MT_ms,error_rate_%,elapsed_time_in_block_ms,success,timestamp_readable";
         
         const rows = data.map(r => 
-            `${r.participantId},${r.block},${r.trialInBlock},${r.difficultyLevel},${r.indexOfDifficulty},${r.targetsClicked},${r.misclicks},${r.totalTime_ms},${r.throughput_bps},${r.avgMovementTime_ms},${r.errorRate_percent},${r.elapsedTimeInBlock_ms},${r.success},${r.timestampReadable}`
+            `${r.participantId},${r.block},${r.minuteSet},${r.trialInBlock},${r.difficultyLevel},${r.indexOfDifficulty},${r.targetsClicked},${r.misclicks},${r.totalTime_ms},${r.throughput_bps},${r.avgMovementTime_ms},${r.errorRate_percent},${r.elapsedTimeInBlock_ms},${r.success},${r.timestampReadable}`
         ).join("\n");
         
         const blob = new Blob([headers + "\n" + rows], { type: "text/csv" });
@@ -516,7 +515,7 @@ function downloadCSV(data, fileName) {
         // --- NEW: Precise Academic File Naming ---
         // Example output: "102206023_fitts_minute_1.csv"
         const pid = data[0].participantId || participantId || "UNKNOWN";
-        a.download = `${pid}_fitts_minute_${completedMinutes}.csv`;
+        a.download = `${pid}_fitts_block_${blockIdx || 1}_minute_${completedMinutes}.csv`;
         
         // Safe trigger and memory cleanup
         document.body.appendChild(a);
@@ -537,6 +536,7 @@ function downloadCSV(data, fileName) {
                 const timeSpentPaused = performance.now() - pauseTimestamp;
                 testStartTime += timeSpentPaused;  // Fixes the 60s progress bar
                 trialStartTime += timeSpentPaused; // Protects the Fitts' throughput math
+                if (movementStartTime) movementStartTime += timeSpentPaused;
             }
 
             if (currentTrial) animateTargets();
