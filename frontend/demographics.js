@@ -1,10 +1,8 @@
 // Pure validator (no DOM). Returns null if valid, else a human-readable error.
 function validateDemographics(data) {
-    const id = String(data.participantId || '').trim();
-    if (!id) return 'Please enter your participant ID.';
-    if (!/^[A-Za-z0-9_-]{2,40}$/.test(id)) {
-        return 'Participant ID must be 2-40 characters: letters, numbers, hyphen or underscore.';
-    }
+    const email = String(data.email || '').trim();
+    if (!email) return 'Please enter your email address.';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return 'Please enter a valid email address.';
     const age = Number.parseInt(data.age, 10);
     if (!Number.isFinite(age) || age < 16 || age > 100) {
         return 'Please enter an age between 16 and 100.';
@@ -18,15 +16,29 @@ function validateDemographics(data) {
 function mountDemographicsForm(container, onComplete) {
     container.innerHTML = `
         <div class="demographics-container screen-enter">
-            <div class="block-title">Participant Demographics</div>
-            <p class="form-intro">Please fill in your details. This information is stored under a participant code only.</p>
+            <div class="block-title">Register to take part</div>
+            <p class="form-intro">We'll issue you a participant ID automatically. Your email is used only to
+                issue that ID and prevent duplicate participation &mdash; it is stored separately from your
+                research responses.</p>
             <form id="demographics-form" novalidate>
                 <div class="form-group">
-                    <label for="participant-id">Participant ID:</label>
-                    <input type="text" id="participant-id" name="participantId"
-                           inputmode="text" autocomplete="off" autocapitalize="characters"
-                           maxlength="40" placeholder="e.g. P017 or your assigned code" required>
-                    <small class="field-hint">2&ndash;40 characters: letters, numbers, hyphen or underscore.</small>
+                    <label for="email">Email:</label>
+                    <input type="email" id="email" name="email"
+                           inputmode="email" autocomplete="email" autocapitalize="off"
+                           maxlength="120" placeholder="you@example.com" required>
+                    <small class="field-hint">Used to issue your participant ID and avoid duplicate sign-ups.</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="full-name">Full name <span class="field-hint">(optional)</span>:</label>
+                    <input type="text" id="full-name" name="fullName"
+                           inputmode="text" autocomplete="name" maxlength="120" placeholder="Optional">
+                </div>
+
+                <div class="form-group">
+                    <label for="phone">Phone <span class="field-hint">(optional)</span>:</label>
+                    <input type="tel" id="phone" name="phone"
+                           inputmode="tel" autocomplete="tel" maxlength="40" placeholder="Optional">
                 </div>
 
                 <div class="form-group">

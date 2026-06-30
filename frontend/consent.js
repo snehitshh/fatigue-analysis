@@ -82,6 +82,9 @@ function mountConsentScreen(container, onComplete, onDecline) {
 
                 <h3>Your data</h3>
                 <ul>
+                    <li>We collect your email (and optionally your name and phone) to issue your participant ID and
+                        to prevent duplicate participation. These contact details are stored <strong>separately</strong>
+                        from your research responses and are visible only to the study administrator.</li>
                     <li>Responses are stored under a participant code for ${config.dataUse || 'research analysis'}.</li>
                     <li>We record task performance, timing, and basic device information (screen size, input method).</li>
                     <li>The dataset is <strong>pseudonymous</strong>, not guaranteed anonymous. Keep your participant code private.</li>

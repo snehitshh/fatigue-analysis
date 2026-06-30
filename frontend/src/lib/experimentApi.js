@@ -118,6 +118,17 @@ async function claimParticipantCode(code) {
     return { data, error };
 }
 
+// Self-registration: auto-issue a unique participant code, de-duplicated by
+// email. Returns { code, already_registered }. Contact details are stored in a
+// separate, admin-only table; the research tables only ever see the code.
+async function registerParticipant(email, fullName, phone) {
+    if (!isSupabaseConfigured) return { data: { code: null, disabled: true }, error: null };
+    const { data, error } = await supabase.rpc("register_participant", {
+        p_email: email, p_full_name: fullName || null, p_phone: phone || null
+    });
+    return { data, error };
+}
+
 // Mark a session completed/abandoned (anon-callable RPC) so status/completed_at
 // reflect reality - lets analysts filter for genuinely finished sessions.
 async function finalizeSession(sessionId, status = "completed") {
@@ -151,6 +162,7 @@ export const experimentApi = {
     isSupabaseConfigured,
     getActiveStudy,
     claimParticipantCode,
+    registerParticipant,
     finalizeSession,
     finalizeScrollSession,
     createParticipant: (payload) => insertRow("participants", payload),

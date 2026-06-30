@@ -1102,6 +1102,42 @@ async function claimParticipantCodeOrAllow(code) {
     return { ok: false, reason: d.reason || 'unknown' };
 }
 
+// Self-registration: auto-issue a participant code, de-duplicated by email.
+// Returns { ok, code, alreadyRegistered } or { ok:false, reason }. In dev/no-
+// backend mode a local code is generated so the flow still works.
+async function registerParticipantOrAllow(data) {
+    const api = getBackendApi();
+    const email = String(data.email || '').trim();
+    if (!api || !api.isSupabaseConfigured || typeof api.registerParticipant !== 'function') {
+        return { ok: true, code: 'FP-' + Math.random().toString(36).slice(2, 8).toUpperCase(), alreadyRegistered: false };
+    }
+    const res = await api.registerParticipant(email, data.fullName, data.phone);
+    if (res.error) {
+        logBackendError('registerParticipant', res.error);
+        if (/invalid email/i.test(res.error.message || '')) return { ok: false, reason: 'invalid' };
+        return { ok: false, reason: 'network' };
+    }
+    const d = res.data || {};
+    if (!d.code) return { ok: false, reason: 'unknown' };
+    return { ok: true, code: d.code, alreadyRegistered: !!d.already_registered };
+}
+
+// Confirm the auto-assigned ID so the participant can save it before continuing.
+function showParticipantIdConfirmation(code, alreadyRegistered) {
+    setWithdrawVisible(false);
+    mainContent.innerHTML = `
+        <div class="card-screen screen-enter">
+            <div class="kicker" style="color:var(--accent-cyan,#45c8e6); font-weight:800; letter-spacing:0.16em; text-transform:uppercase; font-size:0.72rem;">Registered</div>
+            <div class="block-title">Your participant ID</div>
+            <p style="color:var(--color-text-muted,#6b7280);">${alreadyRegistered
+                ? 'This email is already registered, so we are reusing your existing ID.'
+                : 'Please save this ID. You may need it to ask questions about, or to withdraw, your data later.'}</p>
+            <div style="font-size:2rem; font-weight:800; letter-spacing:0.08em; text-align:center; margin:18px 0; color:var(--accent-cyan,#45c8e6);">${escapeHtml(code)}</div>
+            <button class="button primary" id="reg-continue" type="button" style="width:100%;">Continue</button>
+        </div>`;
+    document.getElementById('reg-continue').onclick = () => showExperimentSetup();
+}
+
 // 1. Demographics
 function showDemographics() {
     currentStep = 'demographics';
@@ -1110,24 +1146,24 @@ function showDemographics() {
     if (typeof mountDemographicsForm === "function") {
         mountDemographicsForm(mainContent, async (data) => {
             sessionData.demographics = data;
-            const claim = await claimParticipantCodeOrAllow(String(data.participantId || '').trim());
-            if (!claim.ok) {
+            const reg = await registerParticipantOrAllow(data);
+            if (!reg.ok) {
                 const errBox = document.getElementById('demographics-error');
-                const msg = claim.reason === 'taken'
-                    ? 'This participant ID has already been used. Please check the ID assigned by the researcher.'
-                    : claim.reason === 'unknown'
-                        ? 'This participant ID is not recognised. Please enter the ID assigned by the researcher.'
-                        : 'Could not verify your ID. Please check your connection and try again.';
+                const msg = reg.reason === 'invalid'
+                    ? 'Please enter a valid email address.'
+                    : 'Could not register right now. Please check your connection and try again.';
                 if (errBox) { errBox.textContent = msg; errBox.hidden = false; }
-                return; // stay on the form so they can correct the ID
+                return; // stay on the form
             }
-            claimedSlotId = claim.slotId || null;
+            data.participantId = reg.code;       // server-issued ID becomes the code
+            claimedSlotId = null;                // self-registration: no researcher slot
             downloadDemographicsCSV(data);
             ensureBackendParticipant(data);
-            showExperimentSetup();
+            showParticipantIdConfirmation(reg.code, reg.alreadyRegistered);
         });
     } else {
-        sessionData.demographics = { participantId: "TEST_" + Math.floor(Math.random() * 1000) };
+        const code = 'FP-' + Math.random().toString(36).slice(2, 8).toUpperCase();
+        sessionData.demographics = { participantId: code, email: 'dev@example.com' };
         downloadDemographicsCSV(sessionData.demographics);
         ensureBackendParticipant(sessionData.demographics);
         showExperimentSetup();

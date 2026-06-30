@@ -246,6 +246,7 @@ const NAV = [
         { route: "export", label: "Export" }
     ] },
     { group: "Administration", admin: true, items: [
+        { route: "registrations", label: "Registrations" },
         { route: "access", label: "Access requests" },
         { route: "audit", label: "Audit log" }
     ] }
@@ -295,6 +296,7 @@ function navigate() {
         case "measurements": return loadMeasurements();
         case "slots": return loadSlots();
         case "export": return loadExport();
+        case "registrations": return loadRegistrations();
         case "access": return loadAccessRequests();
         case "audit": return loadAuditLog();
         case "overview":
@@ -802,6 +804,32 @@ async function onGenerate(e) {
 async function updateSlot(id, patch) {
     const { error } = await supabase.from("participant_slots").update(patch).eq("id", id);
     if (!error) { loadSlots(); refreshNavCounts(); }
+}
+
+// --- registrations (admin): self-registered participants + contact details ----
+async function loadRegistrations() {
+    view().innerHTML = spinner("Loading registrations…");
+    const { data, error } = await supabase
+        .from("participant_contacts").select("*").order("created_at", { ascending: false });
+    if (error) { view().innerHTML = errorCard("Could not load registrations", error.message); return; }
+    const rows = data || [];
+    view().innerHTML = `
+        <div class="card">
+            <div class="view-head"><div>
+                <div class="kicker">Administration</div>
+                <h1>Registrations</h1>
+                <p class="muted" style="margin:0;">Self-registered participants and contact details — admin-only, stored separately from research data.</p>
+            </div>${rows.length ? `<button class="ghost" id="reg-export" type="button">Download CSV</button>` : ""}</div>
+            <div class="toolbar"><input type="search" id="reg-filter" placeholder="Filter by code, email, name…">
+                <span class="muted" id="reg-count">${rows.length} participant(s)</span></div>
+            ${genericTable(rows)}
+        </div>`;
+    wireFilter("reg-filter", "reg-count", rows.length);
+    const ex = document.getElementById("reg-export");
+    if (ex) ex.addEventListener("click", () => {
+        downloadCsv("participant_contacts.csv", toCsv(rows));
+        logAction("export_csv", "participant_contacts", { rows: rows.length });
+    });
 }
 
 // --- access requests (admin) --------------------------------------------------
