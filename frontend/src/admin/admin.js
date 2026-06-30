@@ -501,7 +501,7 @@ async function loadMeasurements() {
                     </div>
                     <div style="flex:1; min-width:160px;">
                         <label for="m-type">Type</label>
-                        <select id="m-type" style="width:100%; padding:11px 13px; border-radius:9px; background:rgba(255,255,255,0.07); color:#e6eefc; border:1px solid rgba(120,170,235,0.24);">
+                        <select id="m-type">
                             <option value="ecg">ECG</option>
                             <option value="physical">Physical (manual)</option>
                         </select>
@@ -653,7 +653,7 @@ async function loadQuality() {
 
     const flagged = (rows || []).map((r) => ({ r, f: qualityFlag(r) }));
     const counts = flagged.reduce((a, x) => { a[x.f.level] = (a[x.f.level] || 0) + 1; return a; }, {});
-    const dot = (lvl) => `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:7px;background:${lvl === "good" ? "#86efac" : lvl === "warn" ? "#fbbf24" : "#fca5a5"};"></span>`;
+    const dot = (lvl) => `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:7px;background:${lvl === "good" ? "#16a34a" : lvl === "warn" ? "#d97706" : "#dc2626"};"></span>`;
 
     const body = flagged.map(({ r, f }) => `
         <tr>
