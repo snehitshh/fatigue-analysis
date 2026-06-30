@@ -70,7 +70,7 @@ function mountConsentScreen(container, onComplete, onDecline) {
                 <p>You are invited to take part in a research study on <strong>fatigue and how it
                 affects human&ndash;computer interaction</strong>, conducted by
                 <strong>${config.institution || 'the configured research institution'}</strong>.
-                Protocol: <strong>${config.protocolId || 'not configured'}</strong>.</p>
+                Protocol: <strong>${config.protocolId || 'To be confirmed'}</strong>.</p>
 
                 <h3>What you will do</h3>
                 <ul>
@@ -85,7 +85,7 @@ function mountConsentScreen(container, onComplete, onDecline) {
                     <li>Responses are stored under a participant code for ${config.dataUse || 'research analysis'}.</li>
                     <li>We record task performance, timing, and basic device information (screen size, input method).</li>
                     <li>The dataset is <strong>pseudonymous</strong>, not guaranteed anonymous. Keep your participant code private.</li>
-                    <li>Data retention: ${config.retention || 'not configured'}.</li>
+                    <li>Data retention: ${config.retention || 'To be confirmed'}.</li>
                     <li>The optional camera check runs on-device; no image or video is uploaded.</li>
                 </ul>
 
@@ -101,7 +101,7 @@ function mountConsentScreen(container, onComplete, onDecline) {
                     <li>You may <strong>withdraw at any time</strong> with no penalty. This stops new collection.</li>
                     <li>Data already submitted is handled under the approved retention policy. Contact ${config.contact || 'the study team'} about removal requests.</li>
                     <li>If you have a health concern about the physical task, a safety check and an alternative are provided.</li>
-                    <li>Study contact: <strong>${config.contact || 'not configured'}</strong>.</li>
+                    <li>Study contact: <strong>${config.contact || 'To be confirmed'}</strong>.</li>
                 </ul>
 
                 <label class="consent-check">
