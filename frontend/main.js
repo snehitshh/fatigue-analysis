@@ -877,6 +877,7 @@ function withdrawStudy() {
         danger: true,
         onConfirm: () => {
             withdrawn = true;
+            stopKiosk();
             window.fatigueFrameCapture?.stopFrameCapture?.();
             window.fatigueAttention?.disableAttention?.(); // release the camera
             recordBackendEvent('participant_withdrew', { atStep: currentStep, block: currentBlock });
@@ -903,7 +904,44 @@ window.addEventListener('beforeunload', function (e) {
     e.preventDefault(); 
     
     // Returning a value satisfies older browsers without triggering the deprecation warning
-    return ''; 
+    return '';
+});
+
+// --- Fullscreen kiosk lock ----------------------------------------------------
+// During the test the study runs full screen; if the participant leaves full
+// screen (e.g. presses Escape) a blocking overlay makes them resume before they
+// can continue. Re-entering full screen needs a user gesture, hence the button.
+let kioskActive = false;
+function isFullscreen() { return Boolean(document.fullscreenElement || document.webkitFullscreenElement); }
+function requestKioskFullscreen() {
+    const el = document.documentElement;
+    const fn = el.requestFullscreen || el.webkitRequestFullscreen;
+    try { const r = fn && fn.call(el); return (r && r.catch) ? r.catch(() => {}) : Promise.resolve(); }
+    catch (e) { return Promise.resolve(); }
+}
+function startKiosk() { kioskActive = true; requestKioskFullscreen(); }
+function stopKiosk() {
+    kioskActive = false;
+    hideKioskOverlay();
+    if (isFullscreen() && document.exitFullscreen) { try { document.exitFullscreen(); } catch (e) { /* ignore */ } }
+}
+function hideKioskOverlay() { const o = document.getElementById('kiosk-overlay'); if (o) o.remove(); }
+function showKioskOverlay() {
+    if (document.getElementById('kiosk-overlay')) return;
+    const o = document.createElement('div');
+    o.id = 'kiosk-overlay';
+    o.style.cssText = 'position:fixed; inset:0; z-index:99999; background:rgba(7,18,32,0.97); color:#e6eefc; display:flex; align-items:center; justify-content:center; text-align:center; padding:24px; font-family:inherit;';
+    o.innerHTML = `<div>
+        <div style="font-size:1.3rem; font-weight:800; margin-bottom:10px;">Please stay in full screen</div>
+        <p style="color:#9fb4d6; max-width:440px; margin:0 auto 18px; line-height:1.5;">The study runs in full screen so nothing distracts you during the tasks. Your progress is saved &mdash; return to full screen to continue.</p>
+        <button id="kiosk-resume" type="button" style="font:inherit; font-weight:700; cursor:pointer; border:none; border-radius:10px; padding:12px 24px; background:linear-gradient(135deg,#3a8cff,#45c8e6); color:#04121f;">Resume in full screen</button>
+    </div>`;
+    document.body.appendChild(o);
+    document.getElementById('kiosk-resume').onclick = () => { requestKioskFullscreen().finally(hideKioskOverlay); };
+}
+document.addEventListener('fullscreenchange', () => {
+    if (!kioskActive || currentStep === 'complete') { hideKioskOverlay(); return; }
+    if (!isFullscreen()) showKioskOverlay(); else hideKioskOverlay();
 });
 // Four high-level phases shown as a numbered stepper (matches the console design).
 function currentPhaseIndex() {
@@ -1078,6 +1116,12 @@ function showCameraCalibration() {
             taps,
             poses: anyPose ? poses : null
         });
+        // Adapt the attention classifier to this person/device using the corner poses.
+        const limits = window.fatigueCalibration.limitsFromCornerPoses?.(profile.cornerPoses);
+        if (limits) {
+            profile.attentionLimits = limits;
+            window.fatigueAttention?.setLimits?.(limits);
+        }
         if (consentData && consentData.camera) consentData.camera.calibration = profile;
         recordBackendEvent('camera_calibration', profile);
         showDemographics();
@@ -1148,7 +1192,7 @@ function showParticipantIdConfirmation(code, alreadyRegistered) {
             <div style="font-size:2rem; font-weight:800; letter-spacing:0.08em; text-align:center; margin:18px 0; color:var(--accent-cyan,#45c8e6);">${escapeHtml(code)}</div>
             <button class="button primary" id="reg-continue" type="button" style="width:100%;">Continue</button>
         </div>`;
-    document.getElementById('reg-continue').onclick = () => showExperimentSetup();
+    document.getElementById('reg-continue').onclick = () => { startKiosk(); showExperimentSetup(); };
 }
 
 // 1. Demographics
@@ -1744,6 +1788,7 @@ function showCompletion() {
     clearSession(); // study finished - nothing left to resume
     updateProgress();
     setWithdrawVisible(false);
+    stopKiosk();
     window.fatigueFrameCapture?.stopFrameCapture?.();
     window.fatigueAttention?.disableAttention?.(); // release the camera
     recordBackendEvent('session_completed', { totalBlocks: TOTAL_BLOCKS });

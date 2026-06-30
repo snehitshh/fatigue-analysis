@@ -10,9 +10,18 @@
 // need tuning there. The pure helpers (headPoseFromMatrix, isLookingAtScreen) are
 // exported and unit-tested separately.
 
-// Tolerances (degrees) for "facing the screen". Tune on-device.
-const DEFAULT_LIMITS = { yaw: 22, pitch: 20 };
+// Tolerances (degrees) for "facing the screen". These are the defaults; the
+// 4-dot calibration replaces them with per-person adaptive limits via setLimits().
+const DEFAULT_LIMITS = { yaw: 26, pitch: 22 };
+let currentLimits = { ...DEFAULT_LIMITS };
 const SAMPLE_INTERVAL_MS = 350; // ~3 fps - low enough to spare battery / main thread
+
+// Apply adaptive tolerances derived from calibration (see calibration.js).
+export function setLimits(limits) {
+    if (limits && typeof limits.yaw === "number" && typeof limits.pitch === "number") {
+        currentLimits = { yaw: limits.yaw, pitch: limits.pitch };
+    }
+}
 
 // MediaPipe assets. The wasm version MUST match the installed @mediapipe/tasks-vision.
 const MP_VERSION = '0.10.20';
@@ -121,7 +130,7 @@ function loop() {
             const mtx = res.facialTransformationMatrixes && res.facialTransformationMatrixes[0];
             if (mtx && mtx.data) {
                 lastPose = headPoseFromMatrix(mtx.data);
-                attentive = isLookingAtScreen(lastPose);
+                attentive = isLookingAtScreen(lastPose, currentLimits);
             } else {
                 attentive = true; // face present but no pose -> assume looking
             }
@@ -136,5 +145,5 @@ function loop() {
 }
 
 if (typeof window !== 'undefined') {
-    window.fatigueAttention = { enableAttention, disableAttention, isAttentionActive, getLastPose, getVideoElement };
+    window.fatigueAttention = { enableAttention, disableAttention, isAttentionActive, getLastPose, getVideoElement, setLimits };
 }

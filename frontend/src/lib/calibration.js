@@ -31,10 +31,32 @@ export function tapAccuracyPx(targets, taps) {
     return Math.round((sum / targets.length) * 100) / 100;
 }
 
+// Derive an ADAPTIVE attention tolerance from the head poses recorded while the
+// participant looked at the four screen corners. The largest yaw/pitch they
+// rotated to reach a corner is, by definition, still "looking at the screen", so
+// the tolerance is that maximum plus a margin. This adapts to the person's
+// distance and screen size instead of using one fixed threshold. Clamped to sane
+// bounds; falls back to `fallback` when there aren't enough poses.
+export function limitsFromCornerPoses(cornerPoses, fallback = { yaw: 26, pitch: 22 }) {
+    if (!cornerPoses) return { ...fallback };
+    const vals = Object.values(cornerPoses).filter(Boolean);
+    if (vals.length < 2) return { ...fallback };
+    let maxYaw = 0, maxPitch = 0;
+    for (const p of vals) {
+        if (typeof p.yaw === "number") maxYaw = Math.max(maxYaw, Math.abs(p.yaw));
+        if (typeof p.pitch === "number") maxPitch = Math.max(maxPitch, Math.abs(p.pitch));
+    }
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+    return {
+        yaw: clamp(Math.round(maxYaw + 8), 16, 45),
+        pitch: clamp(Math.round(maxPitch + 7), 12, 36)
+    };
+}
+
 // Also exposed on window so the classic-script app (main.js) can use it.
 function _attach() {
     if (typeof window !== "undefined") {
-        window.fatigueCalibration = { calibrationTargets, tapAccuracyPx, buildCalibrationProfile };
+        window.fatigueCalibration = { calibrationTargets, tapAccuracyPx, buildCalibrationProfile, limitsFromCornerPoses };
     }
 }
 
