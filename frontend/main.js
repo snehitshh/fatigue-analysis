@@ -3,6 +3,10 @@ const TOTAL_BLOCKS = 3;
 const BREAK_DURATION = 120; // 2 minutes
 const PHYSICAL_FATIGUE_DURATION = 720; // 12 minutes (synced with cognitive)
 
+// Steps that are part of the actual test — these get a plain white background;
+// every other (setup/landing/complete) screen shows the light-blue wave theme.
+const TEST_STEPS = new Set(['kss-pre', 'fitts', 'typing', 'nasatlx', 'cognitive', 'physical', 'safety', 'kss-post', 'break']);
+
 let currentStep = 'demographics'; 
 let currentBlock = 1;
 
@@ -978,6 +982,8 @@ function completionPercent() {
 }
 
 function updateProgress() {
+    // Plain white during the test itself; light-blue wave theme everywhere else.
+    document.body.classList.toggle('test-mode', TEST_STEPS.has(currentStep));
     const phases = ['Consent', 'Setup', 'Data Collection', 'Results'];
     const activePhase = currentPhaseIndex();
     const activeBlock = Math.min(Math.max(currentBlock || 1, 1), TOTAL_BLOCKS);

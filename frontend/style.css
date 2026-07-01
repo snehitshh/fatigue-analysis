@@ -2519,3 +2519,151 @@ textarea:focus-visible,
 @media (prefers-reduced-motion: reduce) {
     .kss-option { transition: none; }
 }
+
+/* ============================================================
+   LIGHT THEME (v6): light-blue + white, floating wave lines.
+   Appended last so it overrides the earlier dark-photo theme.
+   The test itself (body.test-mode) uses a plain white background.
+   ============================================================ */
+
+/* Backdrop base: soft white -> light-blue wash */
+.bg-base {
+    background: linear-gradient(160deg, #ffffff 0%, #eaf2ff 45%, #dbeafe 100%) !important;
+    filter: none !important;
+    animation: none !important;
+}
+
+/* Two floating wave-line layers (re-enable the hidden layers and retheme them) */
+.bg-hex, .bg-dots, .bg-aurora { display: block !important; }
+.bg-scan { display: none !important; }
+
+.bg-hex {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='120' viewBox='0 0 240 120'%3E%3Cg fill='none' stroke='%232563eb' stroke-width='2'%3E%3Cpath d='M0 34 q30 -16 60 0 t60 0 t60 0 t60 0' stroke-opacity='0.18'/%3E%3Cpath d='M0 70 q30 -16 60 0 t60 0 t60 0 t60 0' stroke-opacity='0.13'/%3E%3Cpath d='M0 104 q30 -16 60 0 t60 0 t60 0 t60 0' stroke-opacity='0.10'/%3E%3C/g%3E%3C/svg%3E") !important;
+    background-size: 240px 120px !important;
+    background-repeat: repeat !important;
+    opacity: 1 !important;
+    animation: wave-flow-a 26s linear infinite, wave-float-a 13s ease-in-out infinite alternate !important;
+}
+.bg-dots {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='360' height='160' viewBox='0 0 360 160'%3E%3Cg fill='none' stroke='%2360a5fa' stroke-width='2'%3E%3Cpath d='M0 40 q45 -20 90 0 t90 0 t90 0 t90 0' stroke-opacity='0.14'/%3E%3Cpath d='M0 92 q45 -20 90 0 t90 0 t90 0 t90 0' stroke-opacity='0.10'/%3E%3Cpath d='M0 140 q45 -20 90 0 t90 0 t90 0 t90 0' stroke-opacity='0.08'/%3E%3C/g%3E%3C/svg%3E") !important;
+    background-size: 360px 160px !important;
+    background-repeat: repeat !important;
+    opacity: 1 !important;
+    animation: wave-flow-b 40s linear infinite, wave-float-b 17s ease-in-out infinite alternate !important;
+}
+@keyframes wave-flow-a { from { background-position: 0 0; } to { background-position: 240px 0; } }
+@keyframes wave-flow-b { from { background-position: 0 0; } to { background-position: -360px 0; } }
+@keyframes wave-float-a { from { transform: translateY(-8px); } to { transform: translateY(10px); } }
+@keyframes wave-float-b { from { transform: translateY(8px); } to { transform: translateY(-10px); } }
+
+/* Soft light-blue glows for depth (retheme the aurora blobs) */
+.bg-aurora::before { background: radial-gradient(circle, rgba(59,130,246,0.20), transparent 70%) !important; opacity: 0.5 !important; }
+.bg-aurora::after  { background: radial-gradient(circle, rgba(96,165,250,0.18), transparent 70%) !important; opacity: 0.45 !important; }
+
+/* Light central wash instead of the dark vignette */
+.bg-vignette { background: radial-gradient(120% 90% at 50% 28%, rgba(255,255,255,0.55), transparent 60%) !important; }
+
+/* --- Chrome: light glass, dark-blue text --- */
+#main-title-bar {
+    background: rgba(255,255,255,0.72) !important;
+    color: #1e293b !important;
+    border-bottom: 1px solid rgba(37,99,235,0.18) !important;
+    box-shadow: 0 6px 24px rgba(30,58,138,0.08) !important;
+}
+#session-container {
+    background: rgba(255,255,255,0.82) !important;
+    color: #22293b !important;
+    border: 1px solid rgba(37,99,235,0.16) !important;
+    box-shadow: 0 24px 60px rgba(30,58,138,0.12), inset 0 1px 0 rgba(255,255,255,0.7) !important;
+}
+#main-content { color: #22293b !important; }
+
+/* Header text */
+.hdr-logo { border-color: rgba(37,99,235,0.5) !important; color: #2563eb !important; }
+.hdr-logo svg, .hdr-trust svg { color: #2563eb !important; }
+.hdr-brandname { color: #1e3a8a !important; }
+.hdr-title { color: #0f2b4a !important; }
+.hdr-sub { color: #5b6b8c !important; }
+.hdr-trust { color: #2563eb !important; }
+
+/* Headings / labels / helper text */
+div.block-title { color: #1e3a8a !important; }
+.form-group label { color: #334155 !important; }
+.form-intro { color: #5b6b8c !important; }
+.field-hint { color: #64748b !important; }
+
+/* Consent / safety reading boxes */
+.consent-body, .safety-body { background: #f7faff !important; border-color: rgba(37,99,235,0.16) !important; color: #33415c !important; }
+.consent-body h3, .safety-body h3 { color: #2563eb !important; }
+.consent-check { color: #1e293b !important; }
+.safety-q-text { color: #33415c !important; }
+.safety-question { border-bottom-color: rgba(37,99,235,0.14) !important; }
+.consent-body::-webkit-scrollbar-thumb, .safety-body::-webkit-scrollbar-thumb { background: rgba(37,99,235,0.3) !important; }
+
+/* Mission progress + phase stepper */
+.mission-progress, .phase-stepper { background: #f4f8ff !important; border-color: rgba(37,99,235,0.16) !important; box-shadow: none !important; }
+.mission-progress-copy strong, .phase-meta strong { color: #1e3a8a !important; }
+.mission-progress-step { color: #475569 !important; }
+.mission-progress-kicker, .phase-kicker { color: #2563eb !important; }
+.mission-segment { background: rgba(37,99,235,0.12) !important; }
+.phase-dot { background: #e6eefc !important; color: #64748b !important; border-color: rgba(37,99,235,0.3) !important; }
+.phase-label { color: #64748b !important; }
+.phase-step.active .phase-label { color: #1e3a8a !important; }
+.phase-step.complete .phase-label { color: #475569 !important; }
+.phase-current { color: #475569 !important; }
+.phase-connector { background: rgba(37,99,235,0.22) !important; }
+
+/* Form controls */
+input[type="number"], input[type="text"], input[type="email"], input[type="tel"], select, textarea {
+    background: #ffffff !important; color: #1e293b !important; border-color: rgba(37,99,235,0.28) !important;
+}
+input::placeholder, textarea::placeholder { color: #94a3b8 !important; }
+select option { background: #ffffff; color: #1e293b; }
+
+/* Completion summary + modal */
+.summary-table th { color: #64748b !important; }
+.summary-table td { color: #1e293b !important; }
+.summary-table td.summary-metric { color: #2563eb !important; }
+.summary-table th, .summary-table td { border-bottom-color: rgba(37,99,235,0.16) !important; }
+.app-modal { background: #ffffff !important; border: 1px solid rgba(37,99,235,0.2) !important; color: #1e293b !important; }
+.app-modal-title { color: #1e3a8a !important; }
+.app-modal-message { color: #475569 !important; }
+
+/* NASA-TLX + cognitive */
+.nasatlx-instruction { background: #f4f8ff !important; color: #33415c !important; }
+.nasatlx-question { background: #f7faff !important; border-color: rgba(37,99,235,0.16) !important; }
+.nasatlx-question strong { color: #1e3a8a !important; }
+.nasatlx-question span { color: #475569 !important; }
+#cognitive-feedback { color: #475569 !important; }
+.cognitive-progbar-outer { background: rgba(37,99,235,0.12) !important; }
+#phase-timer-text { color: #2563eb !important; }
+
+/* Mission cards (setup / completion) */
+:root {
+    --mission-panel: #f4f8ff; --mission-panel-tint: #f7faff; --mission-line: rgba(37,99,235,0.16);
+    --mission-text: #1e293b; --mission-muted: #5b6b8c; --mission-blue-strong: #1d4ed8;
+}
+.mission-card { background: #ffffff !important; border-color: rgba(37,99,235,0.16) !important; box-shadow: 0 18px 40px rgba(30,58,138,0.10) !important; }
+.mission-stat { background: #f4f8ff !important; border-color: rgba(37,99,235,0.14) !important; }
+
+/* Feature strip */
+.feature-card { background: rgba(255,255,255,0.72) !important; border-color: rgba(37,99,235,0.16) !important; box-shadow: 0 12px 30px rgba(30,58,138,0.08) !important; }
+.feature-ic { background: rgba(37,99,235,0.10) !important; color: #2563eb !important; }
+.feature-text strong { color: #1e3a8a !important; }
+.feature-text span { color: #5b6b8c !important; }
+
+/* Phones */
+@media (max-width: 600px) {
+    #session-container { background: rgba(255,255,255,0.92) !important; }
+}
+
+/* ---- TEST MODE: plain white background, blue theme, no waves ---- */
+body.test-mode .bg-hex, body.test-mode .bg-dots, body.test-mode .bg-aurora, body.test-mode .bg-vignette { display: none !important; }
+body.test-mode .bg-base { background: #ffffff !important; }
+body.test-mode #session-container { background: #ffffff !important; box-shadow: 0 10px 30px rgba(30,58,138,0.08) !important; }
+body.test-mode #feature-strip { display: none !important; }
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+    .bg-hex, .bg-dots, .bg-aurora::before, .bg-aurora::after { animation: none !important; }
+}
