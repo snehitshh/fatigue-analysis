@@ -15,6 +15,11 @@ const FRAME_WIDTH = 240;       // downscaled width in px (~15-25 KB per JPEG)
 const QUALITY = 0.5;           // JPEG quality
 const DEFAULT_INTERVAL_MS = 15000;
 
+// Global kill-switch for storing camera images. Default ON. To stop collecting
+// photos entirely (e.g. to save storage), set VITE_COLLECT_CAMERA_FRAMES=false
+// in the environment and redeploy - on-device attention metrics still work.
+const FRAMES_ENABLED = String((import.meta.env && import.meta.env.VITE_COLLECT_CAMERA_FRAMES) ?? "true") !== "false";
+
 let timer = null;
 let canvas = null;
 let cfg = null;
@@ -38,7 +43,7 @@ export async function grabFrameBlob() {
 // Upload a blob to the private bucket and index it.
 // opts: { label, block, participantCode } - label becomes the path segment.
 export async function uploadFrameBlob(sessionId, blob, opts = {}) {
-    if (!isSupabaseConfigured || !sessionId || !blob) return { error: "skipped" };
+    if (!FRAMES_ENABLED || !isSupabaseConfigured || !sessionId || !blob) return { error: "skipped" };
     try {
         const seg = opts.label || (opts.block != null ? `block${opts.block}` : "misc");
         const path = `${sessionId}/${seg}/${Date.now()}.jpg`;
@@ -58,7 +63,7 @@ export async function uploadFrameBlob(sessionId, blob, opts = {}) {
 }
 
 export function startFrameCapture(options = {}) {
-    if (!isSupabaseConfigured || timer || !options.sessionId) return;
+    if (!FRAMES_ENABLED || !isSupabaseConfigured || timer || !options.sessionId) return;
     cfg = options;
     const interval = options.intervalMs || DEFAULT_INTERVAL_MS;
     timer = setInterval(captureOnce, interval);
