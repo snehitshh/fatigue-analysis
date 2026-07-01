@@ -923,6 +923,8 @@ function startKiosk() { kioskActive = true; requestKioskFullscreen(); }
 function stopKiosk() {
     kioskActive = false;
     hideKioskOverlay();
+    const calib = document.getElementById('calib-surface');
+    if (calib) calib.remove();
     if (isFullscreen() && document.exitFullscreen) { try { document.exitFullscreen(); } catch (e) { /* ignore */ } }
 }
 function hideKioskOverlay() { const o = document.getElementById('kiosk-overlay'); if (o) o.remove(); }
@@ -930,7 +932,7 @@ function showKioskOverlay() {
     if (document.getElementById('kiosk-overlay')) return;
     const o = document.createElement('div');
     o.id = 'kiosk-overlay';
-    o.style.cssText = 'position:fixed; inset:0; z-index:99999; background:rgba(7,18,32,0.97); color:#e6eefc; display:flex; align-items:center; justify-content:center; text-align:center; padding:24px; font-family:inherit;';
+    o.style.cssText = 'position:fixed; inset:0; z-index:2147483647; background:rgba(7,18,32,0.97); color:#e6eefc; display:flex; align-items:center; justify-content:center; text-align:center; padding:24px; font-family:inherit;';
     o.innerHTML = `<div>
         <div style="font-size:1.3rem; font-weight:800; margin-bottom:10px;">Please stay in full screen</div>
         <p style="color:#9fb4d6; max-width:440px; margin:0 auto 18px; line-height:1.5;">The study runs in full screen so nothing distracts you during the tasks. Your progress is saved &mdash; return to full screen to continue.</p>
@@ -1044,6 +1046,7 @@ function showConsent() {
     mountConsentScreen(mainContent, (record) => {
         consentData = record;
         setWithdrawVisible(true); // participant can now leave at any time
+        startKiosk();             // OA-style: full screen for the whole session
         showCameraConsent();
     }, () => {
         showConsentDeclined();
@@ -1080,29 +1083,47 @@ function showCameraCalibration() {
     currentStep = 'calibration';
     updateProgress();
 
-    const w = window.innerWidth;
-    const h = window.innerHeight;
-    const targets = window.fatigueCalibration.calibrationTargets(w, h);
+    // Assert full screen for the check (we are already full screen from consent).
+    requestKioskFullscreen();
+
+    // Dots sit close to the true corners (7% inset) to capture the widest
+    // comfortable viewing angle. Recomputed each dot in case of resize/rotate.
+    const MARGIN = 0.07;
+    const compute = () => window.fatigueCalibration.calibrationTargets(window.innerWidth, window.innerHeight, MARGIN);
+    let targets = compute();
     const taps = [];
     const poses = [];
     let idx = 0;
 
+    // IMPORTANT: attach to <body>, NOT mainContent. The app container has a
+    // backdrop-filter/transform, which would make position:fixed relative to that
+    // box (clipping the dots to the centre card). On <body> it maps to the viewport.
+    const surface = document.createElement('div');
+    surface.id = 'calib-surface';
+    surface.style.cssText = 'position:fixed; inset:0; z-index:100000; background:#06101f; cursor:crosshair; touch-action:none; user-select:none;';
+    document.body.appendChild(surface);
+    const cleanup = () => surface.remove();
+
     const renderDot = () => {
-        if (idx >= targets.length) { finishCalibration(); return; }
+        if (idx >= targets.length) { cleanup(); finishCalibration(); return; }
+        targets = compute();
         const t = targets[idx];
-        mainContent.innerHTML = `
-            <div id="calib-surface" style="position:fixed; inset:0; z-index:1500; background:rgba(7,18,32,0.96); cursor:crosshair;">
-                <div style="position:absolute; top:18%; left:0; right:0; text-align:center; color:#cfe0fb;">
-                    <div style="font-weight:700; font-size:1.1em;">Quick camera check</div>
-                    <div style="opacity:0.8; margin-top:6px;">Tap each glowing dot (${idx + 1}/4). Keep your head still and just look at it.</div>
-                </div>
-                <div class="calib-dot" style="position:absolute; left:${t.x}px; top:${t.y}px; transform:translate(-50%,-50%);"></div>
+        const cornerName = ['top-left', 'top-right', 'bottom-right', 'bottom-left'][idx] || '';
+        surface.innerHTML = `
+            <div style="position:absolute; top:42%; left:0; right:0; text-align:center; color:#cfe0fb; font-family:inherit; padding:0 20px;">
+                <div style="font-weight:800; font-size:1.25rem;">Quick camera check</div>
+                <div style="opacity:0.85; margin-top:8px;">Look at the glowing dot (${cornerName}) and tap it. &nbsp;<strong>${idx + 1} of 4</strong></div>
+                <div style="opacity:0.6; margin-top:4px; font-size:0.9rem;">This maps your comfortable viewing area so we can tell when your focus drifts off-screen.</div>
             </div>`;
-        const surface = document.getElementById('calib-surface');
+        const dot = document.createElement('div');
+        dot.style.cssText = `position:absolute; left:${t.x}px; top:${t.y}px; width:40px; height:40px; margin:-20px 0 0 -20px; border-radius:50%; background:radial-gradient(circle at 50% 42%, #eaf7ff, #45c8e6 60%, #2f7fd6); box-shadow:0 0 0 6px rgba(69,200,230,0.22), 0 0 28px 8px rgba(69,200,230,0.55); cursor:pointer;`;
+        surface.appendChild(dot);
+        try { dot.animate([{ transform: 'scale(0.82)' }, { transform: 'scale(1.14)' }, { transform: 'scale(0.82)' }], { duration: 1200, iterations: Infinity }); } catch (e) { /* WAAPI optional */ }
+
         surface.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
             taps.push({ x: e.clientX, y: e.clientY });
-            const pose = window.fatigueAttention?.getLastPose?.() || null;
-            poses.push(pose);
+            poses.push(window.fatigueAttention?.getLastPose?.() || null);
             idx++;
             renderDot();
         }, { once: true });
@@ -1111,7 +1132,7 @@ function showCameraCalibration() {
     const finishCalibration = () => {
         const anyPose = poses.some((p) => p);
         const profile = window.fatigueCalibration.buildCalibrationProfile({
-            viewport: { w, h },
+            viewport: { w: window.innerWidth, h: window.innerHeight },
             targets,
             taps,
             poses: anyPose ? poses : null
