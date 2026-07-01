@@ -295,6 +295,13 @@ async function ensureBackendSession() {
                 intervalMs: 15000
             });
         }
+        // Upload the 4 buffered calibration ground-truth photos, labelled by corner.
+        if (calibrationFrames.length && consentData?.camera?.saveFrames && window.fatigueFrameCapture?.uploadFrameBlob) {
+            const pc = getParticipantCode();
+            calibrationFrames.splice(0).forEach((f) => {
+                window.fatigueFrameCapture.uploadFrameBlob(sessionId, f.blob, { label: `calibration-${f.corner}`, block: 0, participantCode: pc });
+            });
+        }
 
         // Now that a session exists, surface the consent + device context as
         // queryable events (they are also stored in participant.metadata).
@@ -912,6 +919,7 @@ window.addEventListener('beforeunload', function (e) {
 // screen (e.g. presses Escape) a blocking overlay makes them resume before they
 // can continue. Re-entering full screen needs a user gesture, hence the button.
 let kioskActive = false;
+let calibrationFrames = []; // buffered 4-dot ground-truth photos, uploaded once the session exists
 function isFullscreen() { return Boolean(document.fullscreenElement || document.webkitFullscreenElement); }
 function requestKioskFullscreen() {
     const el = document.documentElement;
@@ -1120,10 +1128,15 @@ function showCameraCalibration() {
         surface.appendChild(dot);
         try { dot.animate([{ transform: 'scale(0.82)' }, { transform: 'scale(1.14)' }, { transform: 'scale(0.82)' }], { duration: 1200, iterations: Infinity }); } catch (e) { /* WAAPI optional */ }
 
+        const corner = ['tl', 'tr', 'br', 'bl'][idx] || ('c' + idx);
         surface.addEventListener('pointerdown', (e) => {
             e.preventDefault();
             taps.push({ x: e.clientX, y: e.clientY });
             poses.push(window.fatigueAttention?.getLastPose?.() || null);
+            // Ground-truth photo of the participant looking at this known corner.
+            if (consentData?.camera?.saveFrames && window.fatigueFrameCapture?.grabFrameBlob) {
+                window.fatigueFrameCapture.grabFrameBlob().then((b) => { if (b) calibrationFrames.push({ corner, blob: b }); });
+            }
             idx++;
             renderDot();
         }, { once: true });
