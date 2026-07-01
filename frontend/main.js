@@ -961,6 +961,22 @@ function currentPhaseIndex() {
     return 2; // every in-block step is "Data Collection"
 }
 
+// Overall test completion (0-100%). The test is 3 blocks x 5 steps
+// (KSS-pre -> task -> NASA-TLX -> cognitive/physical -> KSS-post). Setup screens
+// before the blocks read 0%; the finished screen reads 100%.
+function completionPercent() {
+    if (currentStep === 'complete') return 100;
+    const STEPS_PER_BLOCK = 5;
+    const stepInBlock = { 'kss-pre': 0, fitts: 1, typing: 1, nasatlx: 2, cognitive: 3, physical: 3, safety: 3, 'kss-post': 4 };
+    const block = Math.min(Math.max(currentBlock || 1, 1), TOTAL_BLOCKS);
+    if (currentStep === 'break') {
+        return Math.round((Math.min(block, TOTAL_BLOCKS) / TOTAL_BLOCKS) * 100);
+    }
+    const idx = stepInBlock[currentStep];
+    if (idx === undefined) return 0; // pre-test setup
+    return Math.round((((block - 1) + idx / STEPS_PER_BLOCK) / TOTAL_BLOCKS) * 100);
+}
+
 function updateProgress() {
     const phases = ['Consent', 'Setup', 'Data Collection', 'Results'];
     const activePhase = currentPhaseIndex();
@@ -984,6 +1000,18 @@ function updateProgress() {
                 <strong>Block ${activeBlock}/${TOTAL_BLOCKS}</strong>
             </div>
             <div class="phase-track" aria-hidden="false">${steps}</div>
+            ${(() => {
+                const pct = completionPercent();
+                return `<div class="completion" style="margin:10px 0 2px;">
+                    <div style="display:flex; justify-content:space-between; font-size:0.78rem; color:#9fb4d6; margin-bottom:5px;">
+                        <span>Test completion</span><span><strong style="color:#cfe0fb;">${pct}%</strong></span>
+                    </div>
+                    <div role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"
+                         style="height:8px; border-radius:999px; background:rgba(255,255,255,0.12); overflow:hidden;">
+                        <div style="height:100%; width:${pct}%; border-radius:999px; background:linear-gradient(90deg,#3a8cff,#45c8e6); transition:width 0.45s ease;"></div>
+                    </div>
+                </div>`;
+            })()}
             <span class="phase-current">${stepDisplayName(currentStep)}</span>
             <span class="protocol-context">${sessionData.demographics.participantId ? `Participant ${escapeHtml(sessionData.demographics.participantId)} · ` : ''}Block ${activeBlock}/${TOTAL_BLOCKS}</span>
             <span class="write-status" id="write-status" aria-live="polite">${navigator.onLine ? 'Save status ready' : 'Offline · records will queue'}</span>
