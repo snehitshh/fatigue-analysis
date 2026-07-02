@@ -18,23 +18,8 @@
             min-height:100vh;
             background: linear-gradient(160deg, #ffffff 0%, #eaf2ff 45%, #dbeafe 100%);
         }
-        /* Soft drifting glow blobs = a calm live background (matches the main app) */
-        body::before, body::after {
-            content:""; position:fixed; z-index:-1; pointer-events:none; border-radius:50%; filter:blur(60px);
-        }
-        body::before {
-            width:70vw; height:70vw; left:-14vw; top:-16vh;
-            background: radial-gradient(circle, rgba(37,99,235,0.20), transparent 62%);
-            animation: blob-a 30s ease-in-out infinite alternate;
-        }
-        body::after {
-            width:64vw; height:64vw; right:-16vw; bottom:-18vh;
-            background: radial-gradient(circle, rgba(96,165,250,0.18), transparent 62%);
-            animation: blob-b 40s ease-in-out infinite alternate;
-        }
-        @keyframes blob-a { from { transform:translate(0,0) scale(1); } to { transform:translate(10vw,8vh) scale(1.15); } }
-        @keyframes blob-b { from { transform:translate(0,0) scale(1.1); } to { transform:translate(-9vw,-7vh) scale(1); } }
-        @media (prefers-reduced-motion: reduce) { body::before, body::after { animation:none; } }
+        /* Live particle-network background (matches the main app) */
+        #bg-canvas { position:fixed; inset:0; z-index:-1; pointer-events:none; }
 
         #timer-bar { position: sticky; top:0; z-index:50; display:none; align-items:center; justify-content:space-between;
             gap:12px; padding:12px 18px; background: rgba(255,255,255,0.8); -webkit-backdrop-filter:blur(12px); backdrop-filter:blur(12px);
@@ -93,12 +78,14 @@
     </style>
 </head>
 <body>
+    <canvas id="bg-canvas" aria-hidden="true"></canvas>
     <div id="timer-bar">
         <div><div class="kicker">Scroll study</div><div class="t" id="timer-text">--:--</div></div>
         <button class="ghost" id="finish-btn" type="button">Finish</button>
     </div>
     <div id="app"></div>
     <div id="feed"></div>
+    <script type="module" src="/src/lib/particles.js"></script>
     <script type="module" src="/src/scroll/scroll.js"></script>
 </body>
 </html>

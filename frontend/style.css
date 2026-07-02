@@ -2725,3 +2725,18 @@ html, body { max-width: 100%; overflow-x: hidden; }
 .write-status.saved   { color: #16a34a !important; border-color: rgba(22,163,74,0.30) !important; }
 .write-status.pending { color: #b45309 !important; border-color: rgba(180,83,9,0.30) !important; }
 .write-status.error   { color: #dc2626 !important; border-color: rgba(220,38,38,0.30) !important; }
+
+/* ============================================================
+   Live particle-network background (v7): replaces the blob layers
+   with a canvas of gently drifting light-blue dots + faint links.
+   ============================================================ */
+body {
+    background: linear-gradient(160deg, #ffffff 0%, #eaf2ff 45%, #dbeafe 100%) !important;
+    background-attachment: fixed !important;
+}
+#app-backdrop { display: none !important; }   /* superseded by the body gradient + canvas */
+#bg-canvas { position: fixed; inset: 0; z-index: -1; pointer-events: none; }
+
+/* Test screens: plain white, no moving background */
+body.test-mode { background: #ffffff !important; }
+body.test-mode #bg-canvas { display: none !important; }
