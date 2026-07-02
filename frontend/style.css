@@ -2533,32 +2533,41 @@ textarea:focus-visible,
     animation: none !important;
 }
 
-/* Two floating wave-line layers (re-enable the hidden layers and retheme them) */
+/* Four soft, slowly drifting light-blue glow blobs = a calm "living" background.
+   (Re-enable the hidden layers; two blobs here + two on .bg-aurora's pseudos.) */
 .bg-hex, .bg-dots, .bg-aurora { display: block !important; }
 .bg-scan { display: none !important; }
 
 .bg-hex {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='120' viewBox='0 0 240 120'%3E%3Cg fill='none' stroke='%232563eb' stroke-width='2'%3E%3Cpath d='M0 34 q30 -16 60 0 t60 0 t60 0 t60 0' stroke-opacity='0.18'/%3E%3Cpath d='M0 70 q30 -16 60 0 t60 0 t60 0 t60 0' stroke-opacity='0.13'/%3E%3Cpath d='M0 104 q30 -16 60 0 t60 0 t60 0 t60 0' stroke-opacity='0.10'/%3E%3C/g%3E%3C/svg%3E") !important;
-    background-size: 240px 120px !important;
-    background-repeat: repeat !important;
+    background: radial-gradient(circle at 50% 50%, rgba(37,99,235,0.20), transparent 62%) !important;
+    background-repeat: no-repeat !important;
+    background-position: -6vw -10vh !important;
+    background-size: 62vw 62vw !important;
+    filter: blur(58px);
     opacity: 1 !important;
-    animation: wave-flow-a 26s linear infinite, wave-float-a 13s ease-in-out infinite alternate !important;
+    animation: blob-drift-c 30s ease-in-out infinite alternate !important;
 }
 .bg-dots {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='360' height='160' viewBox='0 0 360 160'%3E%3Cg fill='none' stroke='%2360a5fa' stroke-width='2'%3E%3Cpath d='M0 40 q45 -20 90 0 t90 0 t90 0 t90 0' stroke-opacity='0.14'/%3E%3Cpath d='M0 92 q45 -20 90 0 t90 0 t90 0 t90 0' stroke-opacity='0.10'/%3E%3Cpath d='M0 140 q45 -20 90 0 t90 0 t90 0 t90 0' stroke-opacity='0.08'/%3E%3C/g%3E%3C/svg%3E") !important;
-    background-size: 360px 160px !important;
-    background-repeat: repeat !important;
+    background: radial-gradient(circle at 50% 50%, rgba(96,165,250,0.18), transparent 62%) !important;
+    background-repeat: no-repeat !important;
+    background-position: 108vw 98vh !important;
+    background-size: 56vw 56vw !important;
+    filter: blur(62px);
     opacity: 1 !important;
-    animation: wave-flow-b 40s linear infinite, wave-float-b 17s ease-in-out infinite alternate !important;
+    animation: blob-drift-d 38s ease-in-out infinite alternate !important;
 }
-@keyframes wave-flow-a { from { background-position: 0 0; } to { background-position: 240px 0; } }
-@keyframes wave-flow-b { from { background-position: 0 0; } to { background-position: -360px 0; } }
-@keyframes wave-float-a { from { transform: translateY(-8px); } to { transform: translateY(10px); } }
-@keyframes wave-float-b { from { transform: translateY(8px); } to { transform: translateY(-10px); } }
+@keyframes blob-drift-c { from { transform: translate(0,0) scale(1); } to { transform: translate(12vw,9vh) scale(1.16); } }
+@keyframes blob-drift-d { from { transform: translate(0,0) scale(1.1); } to { transform: translate(-10vw,-8vh) scale(1); } }
 
-/* Soft light-blue glows for depth (retheme the aurora blobs) */
-.bg-aurora::before { background: radial-gradient(circle, rgba(59,130,246,0.20), transparent 70%) !important; opacity: 0.5 !important; }
-.bg-aurora::after  { background: radial-gradient(circle, rgba(96,165,250,0.18), transparent 70%) !important; opacity: 0.45 !important; }
+/* The aurora pseudo-blobs (they already drift via the base bg-drift keyframes) */
+.bg-aurora::before {
+    width: 48vw; height: 48vw; left: -6vw; top: -10vh;
+    background: radial-gradient(circle, rgba(59,130,246,0.22), transparent 70%) !important; opacity: 0.55 !important;
+}
+.bg-aurora::after {
+    width: 44vw; height: 44vw; right: -8vw; bottom: -12vh;
+    background: radial-gradient(circle, rgba(125,211,252,0.20), transparent 70%) !important; opacity: 0.5 !important;
+}
 
 /* Light central wash instead of the dark vignette */
 .bg-vignette { background: radial-gradient(120% 90% at 50% 28%, rgba(255,255,255,0.55), transparent 60%) !important; }
