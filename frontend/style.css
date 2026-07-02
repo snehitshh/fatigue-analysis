@@ -2667,3 +2667,36 @@ body.test-mode #feature-strip { display: none !important; }
 @media (prefers-reduced-motion: reduce) {
     .bg-hex, .bg-dots, .bg-aurora::before, .bg-aurora::after { animation: none !important; }
 }
+
+/* ============================================================
+   Mobile / phone fit (v6). Prevent horizontal scroll, give the
+   console breathing room, and stack the wide grids so nothing is
+   cut off on a phone.
+   ============================================================ */
+html, body { max-width: 100%; overflow-x: hidden; }
+
+@media (max-width: 600px) {
+    #session-container {
+        width: 100%; max-width: 100%; margin: 0 0 24px;
+        border-radius: 0 0 18px 18px;
+        padding: 16px 14px 22px !important;
+        min-height: auto;
+    }
+    #main-content { align-items: stretch; width: 100%; }
+    .card-screen, .consent-container, .demographics-container, .fatigue-rating, .mission-card {
+        max-width: 100% !important; width: 100%;
+    }
+    div.block-title { font-size: 1.2rem; line-height: 1.25; }
+    /* The 3-column mission progress needs ~440px; stack it on phones. */
+    .mission-progress { grid-template-columns: 1fr !important; gap: 10px; }
+    .mission-progress-track { grid-template-columns: repeat(3, 1fr); }
+    .form-group input, .form-group select, .demographics-container input, .demographics-container select { width: 100%; }
+    .consent-body, .safety-body { max-height: 46vh; }
+}
+
+@media (max-width: 520px) {
+    .mission-card-grid { grid-template-columns: 1fr !important; }
+    #feature-strip { display: none !important; } /* declutter very small screens */
+    .phase-stepper { padding: 10px 12px; }
+    h1 { font-size: 1.18rem; }
+}

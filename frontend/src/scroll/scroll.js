@@ -77,8 +77,14 @@ function showStart() {
             scrolling changes over the session - not what you look at. You can stop any time.</p>
             <p class="muted"><strong>${esc(studyConfig.institution)}</strong> · Protocol ${esc(studyConfig.protocolId)}<br>
             Data retention: ${esc(studyConfig.retention)} · Contact: ${esc(studyConfig.contact)}</p>
-            <label for="pid">Participant ID</label>
-            <input id="pid" type="text" inputmode="text" autocomplete="off" placeholder="ID given by the researcher">
+            <p class="muted">We issue your participant ID automatically from your email. Your email is used only
+            to avoid duplicate sign-ups and is stored separately from your scrolling measurements.</p>
+            <label for="email">Email <span class="hint">(for your participant ID)</span></label>
+            <input id="email" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com">
+            <label for="pname">Full name <span class="hint">(optional)</span></label>
+            <input id="pname" type="text" autocomplete="name" placeholder="Optional">
+            <label for="pphone">Phone <span class="hint">(optional)</span></label>
+            <input id="pphone" type="tel" inputmode="tel" autocomplete="tel" placeholder="Optional">
             <label>How long can you take part?</label>
             <div class="opts" id="dur-opts">
                 ${DURATIONS.map((d, i) => `<div class="opt ${i === 0 ? "sel" : ""}" data-min="${d.min}">${d.label}</div>`).join("")}
@@ -100,31 +106,36 @@ function showStart() {
 
     btn.addEventListener("click", async () => {
         const err = document.getElementById("start-err");
-        const code = document.getElementById("pid").value.trim();
-        if (!code) { err.textContent = "Please enter your participant ID."; err.hidden = false; return; }
-        btn.disabled = true; btn.textContent = "Checking…";
-        const claim = await claimOrAllow(code);
-        if (!claim.ok) {
-            err.textContent = claim.reason === "taken" ? "This ID has already been used."
-                : claim.reason === "unknown" ? "This ID is not recognised."
-                : "Could not verify your ID. Check your connection.";
+        const email = document.getElementById("email").value.trim();
+        if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            err.textContent = "Please enter a valid email address."; err.hidden = false; return;
+        }
+        btn.disabled = true; btn.textContent = "Registering…";
+        const reg = await registerOrAllow(email, document.getElementById("pname").value.trim(), document.getElementById("pphone").value.trim());
+        if (!reg.ok) {
+            err.textContent = reg.reason === "invalid" ? "Please enter a valid email address."
+                : "Could not register right now. Check your connection.";
             err.hidden = false; btn.disabled = false; btn.textContent = "Start"; return;
         }
-        state.participantCode = code;
+        state.participantCode = reg.code;
         showRating("start");
     });
 }
 
-async function claimOrAllow(code) {
-    if (!experimentApi || !experimentApi.isSupabaseConfigured) return { ok: true };
-    const res = await experimentApi.claimParticipantCode(code);
-    if (res.error) return { ok: false, reason: "network" };
+// Self-registration: auto-issue a unique participant code, de-duplicated by email
+// (same mechanism as the main study). Dev/no-backend generates a local code.
+async function registerOrAllow(email, name, phone) {
+    if (!experimentApi || !experimentApi.isSupabaseConfigured || typeof experimentApi.registerParticipant !== "function") {
+        return { ok: true, code: "FP-" + Math.random().toString(36).slice(2, 8).toUpperCase() };
+    }
+    const res = await experimentApi.registerParticipant(email, name, phone);
+    if (res.error) {
+        if (/invalid email/i.test(res.error.message || "")) return { ok: false, reason: "invalid" };
+        return { ok: false, reason: "network" };
+    }
     const d = res.data || {};
-    if (d.disabled || d.ok) return { ok: true };
-    // The scroll study only needs the ID to be a real, provisioned code - it does not
-    // need an exclusive claim, so an ID already used in the main study is still fine.
-    if (d.reason === "taken") return { ok: true };
-    return { ok: false, reason: d.reason || "unknown" };
+    if (!d.code) return { ok: false, reason: "unknown" };
+    return { ok: true, code: d.code, alreadyRegistered: Boolean(d.already_registered) };
 }
 
 function showRating(which) {
@@ -134,6 +145,7 @@ function showRating(which) {
         <div class="center"><div class="card">
             <div class="kicker">${which === "start" ? "Before you begin" : "One last thing"}</div>
             <h1>How tired do you feel right now?</h1>
+            ${which === "start" ? `<p class="muted">Your participant ID: <span class="pill-id">${esc(state.participantCode)}</span> &mdash; please save it.</p>` : ""}
             <p class="muted">KSS: 1 = extremely alert, 9 = extremely sleepy and fighting sleep.</p>
             <div class="scale" id="scale">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `<div class="n" data-n="${n}">${n}</div>`).join("")}</div>
             <button class="primary" id="rate-btn" disabled>${which === "start" ? "Begin scrolling" : "Finish"}</button>
