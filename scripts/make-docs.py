@@ -22,7 +22,7 @@ def build(path, blocks):
     style.font.size = Pt(11)
     for kind, text in blocks:
         if kind == "title":
-            h = doc.add_heading(text, level=0)
+            doc.add_heading(text, level=0)
         elif kind == "h1":
             h = doc.add_heading(text, level=1)
             for r in h.runs:
@@ -41,159 +41,205 @@ def build(path, blocks):
 
 # ---------------------------------------------------------------- USER GUIDE
 user_guide = [
-    ("title", "FatigueIDPro — User Guide"),
-    ("p", "FatigueIDPro is a research platform that measures fatigue from how a person "
-          "interacts with a device. This guide explains how to set it up, run a "
-          "data-collection session, and review the results."),
+    ("title", "FatigueIDPro - User Guide"),
+    ("p", "FatigueIDPro is a research platform that measures fatigue from how a person interacts with a "
+          "device. This guide explains how to set it up, run a data-collection session, review the results, "
+          "and manage researcher access."),
 
     ("h1", "1. What you need"),
-    ("b", "A free Supabase project (the database)."),
-    ("b", "The app — run locally (npm) or hosted at a URL you deploy."),
-    ("b", "A researcher (admin) account to use the console."),
-    ("b", "Participant IDs you generate in the console before a session."),
+    ("b", "A free Supabase project (the database + secure file storage)."),
+    ("b", "The app, hosted at a URL you deploy (e.g. Vercel) or run locally with npm."),
+    ("b", "An approved researcher (admin) account to use the console."),
 
     ("h1", "2. One-time setup"),
-    ("n", "In Supabase, open the SQL Editor and run the file backend/supabase/schema.sql once. "
-          "This creates all tables, security rules, and views."),
-    ("n", "Create a file named .env in the project folder with your Supabase URL and anon key "
-          "(VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY)."),
-    ("n", "Create your admin account: in Supabase, Authentication > Users > Add user. Then in the "
-          "SQL Editor, run seed.sql with that user's email to grant the admin role."),
-    ("p", "Without a .env the app still runs, but it saves data as local CSV files instead of the database."),
+    ("n", "In Supabase, open the SQL Editor and run backend/supabase/schema.sql once, then apply the files "
+          "in backend/supabase/migrations in date order. This creates all tables, security rules, views, "
+          "functions, and the private image-storage bucket."),
+    ("n", "Set the environment variables (in Vercel, or a local .env): VITE_SUPABASE_URL and "
+          "VITE_SUPABASE_ANON_KEY. Also set the two required study details shown on the consent screen: "
+          "VITE_STUDY_INSTITUTION and VITE_STUDY_CONTACT. The other VITE_STUDY_* values (protocol ID, "
+          "retention, physical-protocol text) are optional and show 'To be confirmed' until filled."),
+    ("n", "Create the FIRST admin: in Supabase, Authentication > Users > Add user, then in the SQL Editor "
+          "insert a row in researcher_profiles for that user with role 'admin'. (After this, further "
+          "researchers sign themselves up and you approve them in the console - see section 4.)"),
+    ("n", "Deploy. On Vercel, pushing to the main branch builds automatically; otherwise Redeploy after any "
+          "change or environment-variable update."),
 
-    ("h1", "3. Running the apps"),
-    ("p", "Start the app (npm run dev). There is one link to share — the home page asks whether the "
-          "person is a Participant or a Researcher:"),
-    ("b", "/  — Home: choose 'I'm a Participant' (start the study) or 'Researcher / Admin' (the console)."),
-    ("b", "/scroll.html  — the scroll-fatigue study."),
+    ("h1", "3. The link and the two roles"),
+    ("p", "There is one link to share. The home page asks whether the person is a Participant or a Researcher:"),
+    ("b", "Home (/): 'I'm a Participant' starts the study; 'Researcher / Admin' opens the console."),
+    ("b", "/admin.html: the research console (sign-in required)."),
+    ("b", "/scroll.html: the phone-use study (runs fully only inside the Android app - see section 10)."),
 
-    ("h1", "4. Before a data-collection day"),
-    ("n", "Sign in to the console (/admin.html)."),
-    ("n", "In the Participant IDs card, generate a batch (for example prefix P, start 1, count 50 "
-          "to make P001 to P050)."),
-    ("n", "Print or write down the IDs to hand to participants."),
+    ("h1", "4. Getting and granting researcher access"),
+    ("n", "A researcher opens the console and creates an account (email + password)."),
+    ("n", "New accounts are 'pending' and can see NO data until approved. They see an 'awaiting approval' "
+          "screen."),
+    ("n", "An admin opens Administration > Access requests, and Approves the account with a role "
+          "(viewer, researcher, or admin) or Denies it."),
+    ("p", "Every approval, denial, and data export is written to an append-only Audit log (Administration > "
+          "Audit log) - who did what, and when."),
 
     ("h1", "5. Running a participant session"),
-    ("n", "Open the link on their device and tap 'I'm a Participant'. Give them their ID."),
-    ("n", "They read and agree to the consent screen."),
-    ("n", "They can optionally enable the camera (attention check). If they do, a quick 4-dot "
-          "calibration appears — they tap each glowing dot."),
-    ("n", "They enter their assigned ID. An unknown or already-used ID is rejected."),
-    ("n", "They complete three blocks of tasks (a tapping or typing task, a workload rating, a "
-          "rest break, and a cognitive or physical task)."),
-    ("n", "At the end they see a completion summary."),
-    ("p", "Notes: a Withdraw button is always available. If the page is refreshed or the connection "
-          "drops, the session resumes exactly where it left off, and any data that could not upload "
-          "is retried automatically — nothing is lost."),
+    ("n", "Open the link on their device and tap 'I'm a Participant'."),
+    ("n", "They read and agree to the informed-consent screen. The session then goes full screen (like an "
+          "online exam); leaving full screen shows a 'return to full screen' prompt."),
+    ("n", "They can optionally enable the camera for an attention check, and separately tick whether "
+          "occasional low-resolution photos may be saved. If the camera is on, a 4-dot calibration appears - "
+          "they look at and tap each corner dot (this adapts the attention check to their screen and "
+          "distance)."),
+    ("n", "They register: they enter their email (and optionally name/phone). The app issues a participant "
+          "ID automatically and shows it to save. The same email always gets the same ID, so no one can "
+          "enrol twice."),
+    ("n", "They complete three blocks. Each block: a sleepiness (KSS) rating, a tapping or typing task, a "
+          "NASA-TLX workload rating, and a cognitive or light physical task, then a KSS rating again."),
+    ("n", "A 'Test completion' bar shows their overall progress (0-100%). At the end they see a summary."),
+    ("p", "Notes: a Withdraw button is always available. If the page is refreshed or the connection drops, "
+          "the session resumes where it left off and any data that could not upload is retried automatically "
+          "- nothing is lost."),
 
     ("h1", "6. Uploading manual measurements (ECG / physical)"),
-    ("n", "In the console, use the Add a measurement card."),
-    ("n", "Choose the candidate's ID, pick ECG or Physical, enter the values, and upload."),
-    ("p", "They appear in that candidate's session detail. A Raspberry Pi can also upload ECG "
-          "automatically (see the SETUP document)."),
+    ("n", "In the console, open Operations > Measurements."),
+    ("n", "Choose the participant's session, pick ECG or Physical, enter the values, and upload."),
+    ("p", "They appear in that participant's session detail. (Automatic ECG upload from a Raspberry Pi is a "
+          "planned addition.)"),
 
     ("h1", "7. Reviewing results and data quality"),
-    ("b", "Data quality card: a go/no-go flag per candidate — Good, Review (low attention or many "
-          "app-switches), or Incomplete."),
-    ("b", "Sessions list: click any session to see its per-test results, attention validation, and "
-          "uploaded measurements."),
-    ("b", "Export data: download any dataset (or all of them) as CSV from the Export data card, to "
-          "open in Excel, Python (pandas), or R."),
+    ("b", "Overview: totals at a glance (sessions, completed, IDs, measurements) and recent sessions."),
+    ("b", "Sessions: click a session to see its per-test results, attention validation, uploaded "
+          "measurements, and - if the camera was on - a gallery of the saved snapshots."),
+    ("b", "Data quality: a go/no-go flag per session - Good, Review (left the app often), or Incomplete."),
+    ("b", "Test data: a page per test (Fitts, Typing, Cognitive, NASA-TLX, Fatigue/KSS, Attention, and the "
+          "phone-usage data), each filterable with its own CSV download."),
+    ("b", "Administration > Registrations: self-registered participants and their contact details "
+          "(admin-only)."),
+    ("b", "Export: download any dataset, or all of them, as CSV for Excel, Python (pandas), or R."),
 
-    ("h1", "8. If a participant withdraws"),
-    ("n", "In the Participant IDs card, click Revoke on their code."),
-    ("n", "Click Release to free the code so the same printed ID can be reused by the next person."),
+    ("h1", "8. Camera images and storage"),
+    ("p", "If a participant consents to photo capture, the app saves low-resolution photos to a private "
+          "storage bucket (four labelled calibration photos, plus about one every 15 seconds during the "
+          "test). Only an admin can view them. To turn image collection off entirely (on-device attention "
+          "metrics still work), set VITE_COLLECT_CAMERA_FRAMES=false and redeploy."),
 
-    ("h1", "9. The scroll study"),
-    ("p", "Open /scroll.html (web) or install the Android app (see the SCROLL_APP guide). The "
-          "participant enters their ID, chooses a duration (30, 60, or 120 minutes), and scrolls a "
-          "feed. It measures how their scrolling changes as they tire."),
+    ("h1", "9. Participant ID pool (optional)"),
+    ("p", "Self-registration is the default. If you instead want to hand out researcher-issued codes, use "
+          "Operations > Participant IDs to generate a batch, and Revoke or Release codes as needed."),
 
-    ("h1", "10. Troubleshooting"),
-    ("b", "'ID not recognised / already used': generate the ID in the console first, or Release it "
-          "if it was used before."),
-    ("b", "'Can't sign in to the console': make sure the account has a researcher_profiles row "
-          "(step 2.3)."),
-    ("b", "'Nothing is saving': check the .env values and that schema.sql has been run."),
+    ("h1", "10. The phone-use study"),
+    ("p", "This study measures real phone use (Instagram, Facebook, YouTube, etc.): how long each app is "
+          "used, how often it is opened, and how much the participant scrolls, and how that drifts over 30, "
+          "60, or 120 minutes. Because phones sandbox apps, this needs the FatigueIDPro Android app (a "
+          "browser cannot see other apps). The web page handles registration and the KSS ratings; the app "
+          "does the background recording. See the separate 'Phone-Usage Study App' note for architecture, "
+          "permissions, and why it is distributed as a direct download rather than via the Play Store."),
+
+    ("h1", "11. Troubleshooting"),
+    ("b", "'Awaiting approval' after signing in: an admin must approve the account in Access requests."),
+    ("b", "New features not showing on the live site: redeploy, then hard-refresh (Ctrl+Shift+R)."),
+    ("b", "Consent screen shows 'Study setup is incomplete': set VITE_STUDY_INSTITUTION and "
+          "VITE_STUDY_CONTACT and redeploy."),
+    ("b", "'Nothing is saving': check the Supabase URL/key and that schema.sql + migrations have been run."),
 ]
 
 # ------------------------------------------------------------- FEATURES DOC
 features = [
-    ("title", "FatigueIDPro — Features and How They Help"),
-    ("p", "This document explains each part of FatigueIDPro and why it matters for collecting "
-          "reliable fatigue-research data."),
+    ("title", "FatigueIDPro - Features and How They Help"),
+    ("p", "This document explains each part of FatigueIDPro and why it matters for collecting reliable "
+          "fatigue-research data."),
 
-    ("h1", "Interaction tasks"),
-    ("p", "Fitts tapping, typing, NASA-TLX workload, a cognitive battery (Stroop and AX-CPT), and a "
-          "physical task, run across three blocks."),
-    ("b", "How it helps: fatigue shows up as performance change over time — slower, less accurate, "
-          "more variable. Capturing many fine-grained measures gives a rich signal for analysis "
-          "and machine learning."),
+    ("h1", "Interaction tasks and KSS ratings"),
+    ("p", "Fitts tapping, typing, NASA-TLX workload, a cognitive battery (Stroop and AX-CPT), and a light "
+          "physical task run across three blocks, with a Karolinska Sleepiness Scale (KSS) rating before and "
+          "after each block."),
+    ("b", "How it helps: fatigue shows up as performance change over time; combining fine-grained behaviour "
+          "with a validated subjective scale gives a rich, trusted signal for analysis and machine learning."),
 
-    ("h1", "Randomized assignment"),
-    ("p", "Each session is randomly assigned one primary task and one fatigue task."),
-    ("b", "How it helps: prevents selection bias and keeps the study design balanced."),
+    ("h1", "Reproducible, randomized assignment"),
+    ("p", "Each session's task order is randomly assigned from a stored per-participant seed, and every "
+          "metric carries a version tag."),
+    ("b", "How it helps: prevents selection bias, keeps the design balanced, and makes the exact sequence "
+          "reproducible for auditing and re-analysis."),
 
-    ("h1", "Consent, safety screening, and withdrawal"),
-    ("p", "Informed consent up front, a physical-activity safety check, and a Withdraw button."),
-    ("b", "How it helps: responsible, ethics-aligned research, and a clear record of who agreed and "
-          "who withdrew."),
+    ("h1", "Self-registration with automatic, unique IDs"),
+    ("p", "Participants register with their email; the app issues a unique participant ID automatically and "
+          "de-duplicates by email. Contact details are stored in a separate, admin-only table, apart from the "
+          "research data."),
+    ("b", "How it helps: anyone can take part without a researcher handing out codes, no one can enrol "
+          "twice, and the research data stays pseudonymous."),
 
-    ("h1", "Mobile-friendly, measurement-safe design"),
-    ("p", "Every task works on phones, tablets, and desktops; the tapping arena scales to the real "
-          "screen and the cognitive stimulus appears instantly."),
-    ("b", "How it helps: more participants can take part, and the measurements stay valid and "
-          "comparable across devices."),
+    ("h1", "Consent, camera opt-in, safety screening, and withdrawal"),
+    ("p", "Informed consent up front; a separate camera opt-in with an explicit tick-box for saving photos; "
+          "a physical-activity safety check; and an always-available Withdraw button."),
+    ("b", "How it helps: responsible, ethics-aligned research with a clear record of what each person agreed "
+          "to."),
+
+    ("h1", "Full-screen kiosk mode"),
+    ("p", "The session runs full screen like an online exam; leaving full screen shows a blocking prompt to "
+          "return before continuing."),
+    ("b", "How it helps: keeps attention on the tasks and reduces distraction, improving data quality."),
+
+    ("h1", "Adaptive attention validation with optional snapshots"),
+    ("p", "An on-device camera check estimates whether the participant is looking at the screen. A 4-dot "
+          "calibration measures their comfortable viewing angles and adapts the threshold to their screen and "
+          "distance. If they consent, low-resolution photos are saved to private storage - four labelled "
+          "calibration 'ground-truth' photos plus periodic photos during the test - and image collection has "
+          "a single global on/off switch."),
+    ("b", "How it helps: you can trust each measurement and flag distracted sessions; the calibration photos "
+          "give a per-screen reference for studying attention across different devices, while a kill-switch "
+          "controls storage cost and privacy."),
+
+    ("h1", "Live completion progress"),
+    ("p", "A 'Test completion' bar shows the participant how far through the test they are (0-100%)."),
+    ("b", "How it helps: sets expectations and reduces drop-off part way through."),
 
     ("h1", "Session resume and offline write-queue"),
-    ("p", "A refresh or dropped connection restores the exact step; any data that fails to upload is "
-          "parked and retried automatically."),
-    ("b", "How it helps: no participant has to start over, and no data point is lost on unreliable "
-          "venue Wi-Fi."),
+    ("p", "A refresh or dropped connection restores the exact step; any data that fails to upload is parked "
+          "and retried, and permanent failures are recorded rather than lost."),
+    ("b", "How it helps: no participant restarts, and no data point is lost on unreliable venue Wi-Fi."),
 
     ("h1", "Session finalization"),
     ("p", "Sessions are marked completed or abandoned with a timestamp."),
     ("b", "How it helps: analysts can filter for sessions that genuinely finished instead of guessing."),
 
-    ("h1", "Engagement and attention validation"),
-    ("p", "Each task records whether the participant left the app (app-switches and time away), and "
-          "— if they opt in — an on-device camera check of whether they were looking at the screen, "
-          "refined by a 4-dot calibration. Only derived numbers are stored, never any image."),
-    ("b", "How it helps: you can trust each measurement, and flag or exclude sessions where the "
-          "person was distracted or away."),
+    ("h1", "Multi-section research console"),
+    ("p", "A sidebar console (light, mobile-friendly) with an overview dashboard, a sessions browser with "
+          "per-session detail and a snapshot gallery, a data-quality view, a page per test with its own CSV, "
+          "a registrations list, participant-ID tools, and manual measurement upload."),
+    ("b", "How it helps: fast monitoring during collection and a quick way to decide which data to keep."),
 
-    ("h1", "Participant ID pool"),
-    ("p", "Researchers pre-generate IDs; the app accepts only valid, unused codes; withdrawn codes "
-          "can be released and reused."),
-    ("b", "How it helps: clean, controlled participant identity with no clashes, and easy reuse of "
-          "printed IDs on a busy day."),
+    ("h1", "Researcher access control and audit log"),
+    ("p", "Sign-ups start with no access; an admin approves each account and assigns a role (viewer, "
+          "researcher, admin), enforced by the database itself. Every approval, denial, and data export is "
+          "written to an append-only audit log."),
+    ("b", "How it helps: only authorised people ever see data, and there is a tamper-resistant record of who "
+          "did what - important for a research institution."),
 
-    ("h1", "Manual and device measurements (ECG / physical / Raspberry Pi)"),
-    ("p", "Researchers upload ECG or manual physical results per candidate; a Raspberry Pi can push "
-          "ECG automatically."),
-    ("b", "How it helps: combines objective physiological data with the behavioural measures for a "
-          "fuller picture of fatigue."),
+    ("h1", "Data-quality go/no-go review"),
+    ("p", "Each session is flagged Good, Review, or Incomplete from completion and app-visibility signals; "
+          "camera attention is treated as exploratory, not an automatic exclusion."),
+    ("b", "How it helps: a quick, consistent basis for deciding which sessions to include."),
 
-    ("h1", "Research console with data-quality view"),
-    ("p", "An authenticated console to manage IDs, review every candidate, upload measurements, and "
-          "see a per-session go/no-go quality flag."),
-    ("b", "How it helps: fast monitoring during collection and a quick way to decide which data to "
-          "keep."),
+    ("h1", "Manual and device measurements (ECG / physical)"),
+    ("p", "Researchers upload ECG or manual physical results per participant. Automatic ECG upload from a "
+          "Raspberry Pi is planned."),
+    ("b", "How it helps: combines objective physiological data with the behavioural measures for a fuller "
+          "picture of fatigue."),
 
-    ("h1", "Scroll-fatigue study (web + Android app)"),
-    ("p", "A standalone, safe study where the participant scrolls an in-app feed for a chosen "
-          "duration; it measures how scrolling slows and pauses lengthen."),
-    ("b", "How it helps: captures fatigue from natural, everyday scrolling, on the phone or laptop."),
+    ("h1", "Phone-use (real app usage) study"),
+    ("p", "Measures fatigue from real phone use: per app (Instagram, Facebook, YouTube, ...) how long it is "
+          "used, how often it is opened, and how much the participant scrolls, and how that drifts over the "
+          "session. It runs in a native Android app that records in the background; no content is captured."),
+    ("b", "How it helps: captures fatigue from natural, everyday phone use rather than an artificial in-app "
+          "feed - a far more realistic signal."),
 
     ("h1", "One-click CSV export"),
-    ("p", "Download any dataset, or all of them, as CSV from the console."),
-    ("b", "How it helps: the data goes straight into Excel, pandas, or R for analysis — no manual "
-          "database queries."),
+    ("p", "Download any dataset, or all of them, as CSV from the console (each export is logged)."),
+    ("b", "How it helps: the data goes straight into Excel, pandas, or R - no manual database queries."),
 
     ("h1", "Secure, centralized data"),
-    ("p", "All data lives in one Supabase database with row-level security: the public app can only "
-          "insert, only authenticated researchers can read, and devices upload through a key-guarded "
-          "function."),
+    ("p", "All data lives in one Supabase database with row-level security: the public app can only insert, "
+          "only approved researchers can read, contact details and camera images are locked to admins, and "
+          "all schema changes are version-controlled migrations."),
     ("b", "How it helps: no fragile manual file collection, and participant data is protected by "
           "least-privilege access."),
 ]
