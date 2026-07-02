@@ -28,6 +28,8 @@ const EXPORTS = [
     ["research_manual_measurements_export", "manual_measurements"],
     ["research_scroll_sessions_export", "scroll_sessions"],
     ["research_scroll_intervals_export", "scroll_intervals"],
+    ["research_phone_usage_sessions_export", "phone_usage_sessions"],
+    ["research_app_usage_intervals_export", "app_usage_intervals"],
     ["research_event_export", "session_events"]
 ];
 
@@ -39,8 +41,10 @@ const TEST_VIEWS = {
     nasa: { label: "NASA-TLX", view: "research_nasa_tlx_export", file: "nasa_tlx", desc: "Subjective workload — mental, physical, temporal, performance, effort, frustration." },
     fatigue: { label: "Fatigue (KSS)", view: "research_fatigue_ratings_export", file: "fatigue_ratings", desc: "Karolinska Sleepiness Scale ratings captured pre/post each block." },
     engagement: { label: "Attention / Engagement", view: "research_engagement_export", file: "engagement", desc: "Per-test camera attention (exploratory), look-aways, app-switches, time away." },
-    scroll_sessions: { label: "Scroll sessions", view: "research_scroll_sessions_export", file: "scroll_sessions", desc: "Instagram-style scroll-fatigue sessions — duration, self-ratings start/end." },
-    scroll_intervals: { label: "Scroll intervals", view: "research_scroll_intervals_export", file: "scroll_intervals", desc: "Per-interval scroll metrics — velocity, pauses, idle, self-rating." }
+    scroll_sessions: { label: "Scroll sessions", view: "research_scroll_sessions_export", file: "scroll_sessions", desc: "Legacy in-app scroll-fatigue sessions — duration, self-ratings start/end." },
+    scroll_intervals: { label: "Scroll intervals", view: "research_scroll_intervals_export", file: "scroll_intervals", desc: "Legacy per-interval in-app scroll metrics." },
+    phone_usage: { label: "Phone usage (sessions)", view: "research_phone_usage_sessions_export", file: "phone_usage_sessions", desc: "Real phone-use sessions — time on apps, opens, scroll counts, KSS start/end, fatigue drift." },
+    app_usage: { label: "Phone usage (per app)", view: "research_app_usage_intervals_export", file: "app_usage_intervals", desc: "Per-app, per-interval usage — foreground time, opens, scroll-event counts (Instagram, Facebook, YouTube, …)." }
 };
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;

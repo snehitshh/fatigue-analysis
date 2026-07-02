@@ -1,13 +1,22 @@
-// Scroll-fatigue study app (web + Capacitor APK).
+// Phone-usage fatigue study (runs inside the FatigueIDPro Android app).
 //
-// The participant scrolls an in-app feed for a chosen duration (30/60/120 min).
-// We sample scroll position, aggregate per minute (scrollMetrics.intervalStats),
-// and read fatigue as the drift across the session (fatigueTrend). Only derived
-// numbers are stored - no content of what they "read". Uploads to the same
-// Supabase as the main study; reuses the participant ID pool.
+// GOAL: measure REAL phone use. The participant uses their own phone normally
+// (Instagram, Facebook, YouTube, ...) for a chosen window while a native background
+// service records, per app: foreground time (Android UsageStats), opens, and
+// scroll-event counts (AccessibilityService). Fatigue is read from how usage/scroll
+// activity drifts across the window. No content is captured.
+//
+// This web layer handles registration, the KSS ratings, and session start/finalize.
+// The native layer must expose window.FatiguePhoneUsage:
+//   isAvailable(): boolean
+//   start({ sessionId, participantCode, durationMin, supabaseUrl, supabaseKey }): Promise
+//       -> begins background recording; uploads per-interval rows to app_usage_intervals
+//   stop(): Promise<{ totalForegroundMs, totalScrollEvents, totalOpens,
+//                     appBreakdown: [{app_label, app_package, foreground_ms, scroll_events}],
+//                     scrollDropPct, engagementDropPct }>
+//   appVersion?: string
+// In a plain browser (no native bridge) the study explains it needs the app.
 import { experimentApi } from "../lib/experimentApi.js";
-import { intervalStats, fatigueTrend } from "./scrollMetrics.js";
-import { createSeed, deriveSeed, seededRandom, METRIC_VERSIONS } from "../lib/researchProtocol.js";
 import { studyConfig, studyConfigIssues } from "../lib/studyConfig.js";
 
 const app = document.getElementById("app");
@@ -19,34 +28,22 @@ const finishBtn = document.getElementById("finish-btn");
 const DURATIONS = [
     { label: "30 min", min: 30 },
     { label: "1 hour", min: 60 },
-    { label: "2 hours", min: 120 },
-    { label: "Test (2 min)", min: 2 }
+    { label: "2 hours", min: 120 }
 ];
 
 const state = {
     participantCode: "",
     durationMin: 30,
-    contentMode: "feed",
-    samples: [],
-    intervals: [],
-    intervalIndex: 0,
-    sessionStart: 0,
-    intervalStart: 0,
-    startedAtISO: null,
+    sessionId: null,
+    startMs: 0,
     ratingStart: null,
     ratingEnd: null,
-    lastSampleT: 0,
-    finished: false,
-    intervalTimer: null,
-    countdownTimer: null,
-    cardSeed: 0,
-    scrollSessionId: null,
-    protocolSeed: createSeed(),
-    contentRandom: null
+    totals: {},
+    countdownTimer: null
 };
 
-const now = () => (window.performance && performance.now ? performance.now() : Date.now());
 const esc = (v) => String(v == null ? "" : v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const bridge = () => (typeof window !== "undefined" ? window.FatiguePhoneUsage : null);
 
 function deviceInfo() {
     return {
@@ -58,7 +55,7 @@ function deviceInfo() {
     };
 }
 
-// --- screens ------------------------------------------------------------------
+// --- start / registration -----------------------------------------------------
 function showStart() {
     feed.style.display = "none";
     timerBar.style.display = "none";
@@ -66,19 +63,21 @@ function showStart() {
     if (configIssues.length) {
         app.innerHTML = `<div class="center"><div class="card"><h1>Study setup is incomplete</h1>
             <p class="err">Missing: ${esc(configIssues.join(", "))}</p>
-            <p class="muted">Configure the public study details in .env and rebuild before participant collection.</p></div></div>`;
+            <p class="muted">Configure the public study details and rebuild before collection.</p></div></div>`;
         return;
     }
     app.innerHTML = `
         <div class="center"><div class="card">
-            <div class="kicker">Scroll Study</div>
-            <h1>Scrolling &amp; fatigue</h1>
-            <p class="muted">You'll scroll a feed for the time you choose. We measure how your
-            scrolling changes over the session - not what you look at. You can stop any time.</p>
+            <div class="kicker">Phone-Use Study</div>
+            <h1>Phone use &amp; fatigue</h1>
+            <p class="muted">Use your phone <strong>as you normally would</strong> &mdash; Instagram, Facebook,
+            YouTube, whatever you use &mdash; for the time you choose. In the background we record only
+            <strong>which apps you use, how long, how often you open them, and how much you scroll</strong>.
+            We never see what you look at or type.</p>
             <p class="muted"><strong>${esc(studyConfig.institution)}</strong> · Protocol ${esc(studyConfig.protocolId)}<br>
             Data retention: ${esc(studyConfig.retention)} · Contact: ${esc(studyConfig.contact)}</p>
-            <p class="muted">We issue your participant ID automatically from your email. Your email is used only
-            to avoid duplicate sign-ups and is stored separately from your scrolling measurements.</p>
+            <p class="muted">We issue your participant ID automatically from your email (used only to avoid
+            duplicate sign-ups, stored separately from your usage data).</p>
             <label for="email">Email <span class="hint">(for your participant ID)</span></label>
             <input id="email" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com">
             <label for="pname">Full name <span class="hint">(optional)</span></label>
@@ -90,7 +89,8 @@ function showStart() {
                 ${DURATIONS.map((d, i) => `<div class="opt ${i === 0 ? "sel" : ""}" data-min="${d.min}">${d.label}</div>`).join("")}
             </div>
             <label class="check"><input type="checkbox" id="consent-box">
-                <span>I am at least 16, understand the information above, and agree to my pseudonymous scrolling measurements being stored for research.</span></label>
+                <span>I am at least 16, understand the above, and agree to my pseudonymous app-usage measurements
+                (which apps, time, opens, scroll counts &mdash; not content) being recorded for research.</span></label>
             <div id="start-err" class="err" hidden></div>
             <button class="primary" id="start-btn" disabled>Start</button>
         </div></div>`;
@@ -122,8 +122,7 @@ function showStart() {
     });
 }
 
-// Self-registration: auto-issue a unique participant code, de-duplicated by email
-// (same mechanism as the main study). Dev/no-backend generates a local code.
+// Self-registration: auto-issue a unique participant code, de-duplicated by email.
 async function registerOrAllow(email, name, phone) {
     if (!experimentApi || !experimentApi.isSupabaseConfigured || typeof experimentApi.registerParticipant !== "function") {
         return { ok: true, code: "FP-" + Math.random().toString(36).slice(2, 8).toUpperCase() };
@@ -135,9 +134,10 @@ async function registerOrAllow(email, name, phone) {
     }
     const d = res.data || {};
     if (!d.code) return { ok: false, reason: "unknown" };
-    return { ok: true, code: d.code, alreadyRegistered: Boolean(d.already_registered) };
+    return { ok: true, code: d.code };
 }
 
+// --- KSS rating ---------------------------------------------------------------
 function showRating(which) {
     feed.style.display = "none";
     timerBar.style.display = "none";
@@ -148,7 +148,7 @@ function showRating(which) {
             ${which === "start" ? `<p class="muted">Your participant ID: <span class="pill-id">${esc(state.participantCode)}</span> &mdash; please save it.</p>` : ""}
             <p class="muted">KSS: 1 = extremely alert, 9 = extremely sleepy and fighting sleep.</p>
             <div class="scale" id="scale">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `<div class="n" data-n="${n}">${n}</div>`).join("")}</div>
-            <button class="primary" id="rate-btn" disabled>${which === "start" ? "Begin scrolling" : "Finish"}</button>
+            <button class="primary" id="rate-btn" disabled>${which === "start" ? "Begin" : "Finish"}</button>
         </div></div>`;
     let picked = null;
     app.querySelectorAll("#scale .n").forEach((el) => el.addEventListener("click", () => {
@@ -157,53 +157,65 @@ function showRating(which) {
         document.getElementById("rate-btn").disabled = false;
     }));
     document.getElementById("rate-btn").addEventListener("click", () => {
-        if (which === "start") { state.ratingStart = picked; startFeed(); }
+        if (which === "start") { state.ratingStart = picked; startTracking(); }
         else { state.ratingEnd = picked; upload(); }
     });
 }
 
-// --- the scrolling session ----------------------------------------------------
-async function startFeed() {
+// --- tracking -----------------------------------------------------------------
+async function startTracking() {
     app.innerHTML = `<div class="center"><div class="card"><h1>Starting…</h1></div></div>`;
-    state.sessionStart = now();
-    state.intervalStart = state.sessionStart;
-    state.startedAtISO = new Date().toISOString();
-    state.contentRandom = seededRandom(deriveSeed(state.protocolSeed, "scroll-content"));
+    state.startMs = Date.now();
 
-    // Insert the session up front so per-minute intervals can stream in live - a
-    // long session that drops part-way keeps everything uploaded so far.
     if (experimentApi && experimentApi.isSupabaseConfigured) {
         try {
-            const res = await experimentApi.saveScrollSession({
+            const res = await experimentApi.savePhoneUsageSession({
                 participant_code: state.participantCode,
-                content_mode: state.contentMode,
+                platform: bridge() ? "android" : "web",
+                app_version: (bridge() && bridge().appVersion) || null,
+                device_info: deviceInfo(),
                 chosen_duration_min: state.durationMin,
                 self_rating_start: state.ratingStart,
-                device_info: { ...deviceInfo(), protocolSeed: state.protocolSeed, metricVersion: METRIC_VERSIONS.scroll },
-                started_at: state.startedAtISO
+                started_at: new Date(state.startMs).toISOString()
             });
-            state.scrollSessionId = res && res.data && res.data.id;
-        } catch (e) { console.warn("scroll session start failed", e); }
+            state.sessionId = res && res.data && res.data.id;
+        } catch (e) { console.warn("phone-usage session start failed", e); }
     }
 
-    app.innerHTML = "";
-    feed.style.display = "block";
+    const b = bridge();
+    if (b && typeof b.start === "function") {
+        try {
+            await b.start({
+                sessionId: state.sessionId,
+                participantCode: state.participantCode,
+                durationMin: state.durationMin
+            });
+        } catch (e) { console.warn("native start failed", e); }
+        showTracking();
+    } else {
+        showNeedsApp();
+    }
+}
+
+function showTracking() {
+    app.innerHTML = `
+        <div class="center"><div class="card">
+            <div class="kicker">Recording</div>
+            <h1>You're all set</h1>
+            <p class="muted">Now just <strong>use your phone normally</strong> for about
+            <strong>${state.durationMin} minutes</strong> &mdash; open Instagram, Facebook, YouTube, whatever
+            you'd usually use. You can leave this app; recording continues in the background.</p>
+            <p class="muted">When your time is up, come back here and tap <strong>Finish</strong>.</p>
+        </div></div>`;
     timerBar.style.display = "flex";
-    state.cardSeed = 0;
-    appendCards(20);
-
-    window.addEventListener("scroll", onScroll, { passive: true });
-    state.intervalTimer = setInterval(finalizeInterval, 60 * 1000);
-
     let remaining = state.durationMin * 60;
     renderTimer(remaining);
     state.countdownTimer = setInterval(() => {
         remaining -= 1;
         renderTimer(remaining);
-        if (remaining <= 0) finishFeed();
+        if (remaining <= 0) { clearInterval(state.countdownTimer); }
     }, 1000);
-
-    finishBtn.onclick = finishFeed;
+    finishBtn.onclick = finishTracking;
 }
 
 function renderTimer(secs) {
@@ -211,132 +223,70 @@ function renderTimer(secs) {
     timerText.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
-function onScroll() {
-    const t = now();
-    if (t - state.lastSampleT < 30) return; // throttle ~33/s max
-    state.lastSampleT = t;
-    const y = window.scrollY || document.documentElement.scrollTop || 0;
-    state.samples.push({ y, t });
-    // keep an "infinite" feed so a long session never runs out of content
-    if (y + window.innerHeight > feed.scrollHeight - 1200) appendCards(10);
-}
-
-function finalizeInterval() {
-    const intervalEnd = now();
-    const stats = intervalStats(state.samples, 1500, { startMs: state.intervalStart, endMs: intervalEnd });
-    const iv = { interval_index: state.intervalIndex, self_rating: null, ...stats };
-    state.intervals.push(iv);
-    state.samples = [];
-    state.intervalStart = intervalEnd;
-    state.intervalIndex += 1;
-    // Live upload (resilient: goes through the durable write-queue on failure).
-    if (experimentApi && experimentApi.isSupabaseConfigured && state.scrollSessionId) {
-        experimentApi.saveScrollInterval({
-            scroll_session_id: state.scrollSessionId,
-            participant_code: state.participantCode,
-            interval_index: iv.interval_index,
-            distance_px: iv.distancePx,
-            scroll_events: iv.scrollEvents,
-            reversals: iv.reversals,
-            mean_speed_px_s: iv.meanSpeedPxS,
-            max_speed_px_s: iv.maxSpeedPxS,
-            pause_count: iv.pauseCount,
-            self_rating: iv.self_rating
-        });
+async function finishTracking() {
+    if (state.countdownTimer) clearInterval(state.countdownTimer);
+    timerBar.style.display = "none";
+    const b = bridge();
+    if (b && typeof b.stop === "function") {
+        try { state.totals = (await b.stop()) || {}; } catch (e) { console.warn("native stop failed", e); }
     }
-}
-
-function finishFeed() {
-    if (state.finished) return;
-    state.finished = true;
-    clearInterval(state.intervalTimer);
-    clearInterval(state.countdownTimer);
-    window.removeEventListener("scroll", onScroll);
-    if (state.samples.length) finalizeInterval();
     showRating("end");
 }
 
 // --- upload + done ------------------------------------------------------------
 async function upload() {
-    feed.style.display = "none";
-    timerBar.style.display = "none";
     app.innerHTML = `<div class="center"><div class="card"><h1>Saving…</h1><p class="muted">One moment.</p></div></div>`;
-
-    const totalDistance = state.intervals.reduce((a, i) => a + (i.distancePx || 0), 0);
-    const totalEvents = state.intervals.reduce((a, i) => a + (i.scrollEvents || 0), 0);
-    const totalPauses = state.intervals.reduce((a, i) => a + (i.pauseCount || 0), 0);
-    const actualMs = Math.round(now() - state.sessionStart);
-    const meanSpeed = actualMs > 0 ? Math.round((totalDistance / (actualMs / 1000)) * 100) / 100 : 0;
-    const trend = fatigueTrend(state.intervals);
-
-    const summary = {
-        distanceKpx: Math.round(totalDistance / 100) / 10,
-        speedDropPct: trend.speedDropPct,
-        pauseRisePct: trend.pauseRisePct,
-        ratingStart: state.ratingStart,
-        ratingEnd: state.ratingEnd
-    };
-
-    // The session row + per-minute intervals were uploaded live; here we just set
-    // the totals + end rating + completed_at on the session.
-    if (experimentApi && experimentApi.isSupabaseConfigured && state.scrollSessionId) {
+    const t = state.totals || {};
+    if (experimentApi && experimentApi.isSupabaseConfigured && state.sessionId) {
         try {
-            await experimentApi.finalizeScrollSession(state.scrollSessionId, {
-                actual_duration_ms: actualMs,
-                total_distance_px: Math.round(totalDistance * 100) / 100,
-                total_scroll_events: totalEvents,
-                total_pauses: totalPauses,
-                mean_speed_px_s: meanSpeed,
-                speed_drop_pct: trend.speedDropPct,
-                pause_rise_pct: trend.pauseRisePct,
+            await experimentApi.finalizePhoneUsageSession(state.sessionId, {
+                actual_duration_ms: Date.now() - state.startMs,
+                total_foreground_ms: t.totalForegroundMs,
+                total_scroll_events: t.totalScrollEvents,
+                total_opens: t.totalOpens,
+                app_breakdown: t.appBreakdown || null,
+                scroll_drop_pct: t.scrollDropPct,
+                engagement_drop_pct: t.engagementDropPct,
                 self_rating_end: state.ratingEnd
             });
-        } catch (e) {
-            console.warn("scroll finalize failed", e);
-        }
+        } catch (e) { console.warn("phone-usage finalize failed", e); }
     }
-    showDone(summary);
+    showDone(t);
 }
 
-function showDone(s) {
+function showDone(t) {
+    const mins = t.totalForegroundMs != null ? Math.round(t.totalForegroundMs / 60000) : null;
     app.innerHTML = `
         <div class="center"><div class="card" style="text-align:center;">
             <div class="kicker">Complete</div>
             <h1>Thank you</h1>
-            <p class="muted">Your scrolling session was recorded.</p>
+            <p class="muted">Your phone-usage session was recorded.</p>
             <div style="text-align:left; margin-top:14px;">
                 <h2>Your session</h2>
-                <p class="muted">Distance scrolled: <strong>${esc(s.distanceKpx)}k px</strong><br>
-                Tiredness: <strong>${s.ratingStart == null ? "—" : esc(s.ratingStart)} → ${s.ratingEnd == null ? "—" : esc(s.ratingEnd)}</strong><br>
-                Scroll slowdown: <strong>${s.speedDropPct == null ? "—" : esc(s.speedDropPct) + "%"}</strong><br>
-                Pause increase: <strong>${s.pauseRisePct == null ? "—" : esc(s.pauseRisePct) + "%"}</strong></p>
+                <p class="muted">
+                Time on apps: <strong>${mins == null ? "—" : mins + " min"}</strong><br>
+                Scrolls counted: <strong>${t.totalScrollEvents == null ? "—" : esc(t.totalScrollEvents)}</strong><br>
+                App opens: <strong>${t.totalOpens == null ? "—" : esc(t.totalOpens)}</strong><br>
+                Tiredness: <strong>${state.ratingStart == null ? "—" : esc(state.ratingStart)} → ${state.ratingEnd == null ? "—" : esc(state.ratingEnd)}</strong></p>
             </div>
             <button class="primary" onclick="location.reload()">Done</button>
         </div></div>`;
 }
 
-// --- synthetic feed content ---------------------------------------------------
-const WORDS = ("fatigue attention scrolling research interaction pattern signal rhythm session " +
-    "behaviour cognitive sample reading focus break rest motion gesture velocity dwell").split(" ");
-function lorem(n) {
-    let out = [];
-    const random = state.contentRandom || Math.random;
-    for (let i = 0; i < n; i++) out.push(WORDS[Math.floor(random() * WORDS.length)]);
-    const s = out.join(" ");
-    return s.charAt(0).toUpperCase() + s.slice(1) + ".";
-}
-function appendCards(n) {
-    let html = "";
-    for (let i = 0; i < n; i++) {
-        state.cardSeed += 1;
-        html += `<div class="post">
-            <div class="head"><div class="avatar"></div>
-                <div><div class="who">researcher_${state.cardSeed}</div><div class="sub">post #${state.cardSeed}</div></div></div>
-            <div class="media"></div>
-            <div class="body">${esc(lorem(18 + (state.cardSeed % 30)))}</div>
-        </div>`;
-    }
-    feed.insertAdjacentHTML("beforeend", html);
+// --- browser fallback ---------------------------------------------------------
+function showNeedsApp() {
+    app.innerHTML = `
+        <div class="center"><div class="card">
+            <div class="kicker">Almost there</div>
+            <h1>Open this in the FatigueIDPro app</h1>
+            <p class="muted">This study measures real phone use, which needs the <strong>FatigueIDPro Android
+            app</strong> (a web browser can't see other apps). You're registered as
+            <span class="pill-id">${esc(state.participantCode)}</span> &mdash; install the app, sign in with the
+            same email, and this study will run there.</p>
+            <p class="muted">What the app records: which apps you use, for how long, how often you open them, and
+            how much you scroll. Never any content.</p>
+            <button class="primary" onclick="location.reload()">Back</button>
+        </div></div>`;
 }
 
 showStart();

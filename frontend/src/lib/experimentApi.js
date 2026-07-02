@@ -145,6 +145,14 @@ async function finalizeScrollSession(id, totals) {
     return { error };
 }
 
+// Phone-usage study: finalize totals + end rating on the session (anon-callable RPC).
+async function finalizePhoneUsageSession(id, totals) {
+    if (!isSupabaseConfigured || !id) return { disabled: true };
+    const { error } = await supabase.rpc("finalize_phone_usage_session", { p_id: id, p: totals });
+    if (error) console.warn("[finalizePhoneUsageSession]", error.message);
+    return { error };
+}
+
 async function getActiveStudy(slug = "fatigue-analysis") {
     if (!isSupabaseConfigured) return disabledResult();
 
@@ -177,7 +185,10 @@ export const experimentApi = {
     saveEngagementSummary: (payload) => insertRow("engagement_summary", payload),
     saveFatigueRating: (payload) => insertRow("fatigue_ratings", payload, { retainPermanent: false }),
     saveScrollSession: (payload) => insertRow("scroll_sessions", payload),
-    saveScrollInterval: (payload) => insertRow("scroll_intervals", payload)
+    saveScrollInterval: (payload) => insertRow("scroll_intervals", payload),
+    savePhoneUsageSession: (payload) => insertRow("phone_usage_sessions", payload),
+    saveAppUsageInterval: (payload) => insertRow("app_usage_intervals", payload),
+    finalizePhoneUsageSession
 };
 
 window.fatigueExperimentApi = experimentApi;
