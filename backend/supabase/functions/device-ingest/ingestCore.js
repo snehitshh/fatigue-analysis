@@ -1,3 +1,4 @@
+
 // Pure validation + row shaping for the device-ingest edge function.
 // No Deno/network here so it is unit-testable in Node and reused by index.ts.
 // Returns { row } on success, or { status, error } on a bad request.
