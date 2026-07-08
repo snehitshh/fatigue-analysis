@@ -5,7 +5,7 @@ const PHYSICAL_FATIGUE_DURATION = 720; // 12 minutes (synced with cognitive)
 
 // Steps that are part of the actual test — these get a plain white background;
 // every other (setup/landing/complete) screen shows the light-blue wave theme.
-const TEST_STEPS = new Set(['kss-pre', 'fitts', 'typing', 'nasatlx', 'cognitive', 'physical', 'safety', 'kss-post', 'break']);
+const TEST_STEPS = new Set(['kss-pre', 'fitts', 'typing', 'nasatlx', 'borg', 'cognitive', 'physical', 'safety', 'kss-post', 'break']);
 
 let currentStep = 'demographics'; 
 let currentBlock = 1;
@@ -409,6 +409,30 @@ async function saveBackendFatigueRating(rating) {
     }
 
     await recordBackendEvent('kss_rating', rating);
+}
+
+async function saveBackendBorgRating(rating) {
+    const api = getBackendApi();
+    if (!api || !api.isSupabaseConfigured) return;
+    const sessionId = await ensureBackendSession();
+    if (!sessionId) return;
+    if (typeof api.saveBorgRating === 'function') {
+        const result = await api.saveBorgRating({
+            session_id: sessionId,
+            block_id: backendState.blockIds[rating.blockNumber] || null,
+            block_number: rating.blockNumber,
+            stage: rating.stage,
+            borg_score: rating.score,
+            borg_label: rating.label,
+            protocol_version: getResearchApi().PROTOCOL_VERSION || '3.0.0',
+            recorded_at: rating.recordedAt,
+            ...getRecordIdentity(`borg_${rating.stage}`, rating.blockNumber)
+        });
+        if (!result.error) return;
+        const missingTable = ['42P01', 'PGRST204', 'PGRST205'].includes(result.error.code);
+        if (!missingTable) logBackendError('saveBorgRating', result.error);
+    }
+    await recordBackendEvent('borg_rating', rating);
 }
 
 async function saveBackendNasaTlxResponse(data, blockNumber) {
@@ -971,7 +995,7 @@ function currentPhaseIndex() {
 function completionPercent() {
     if (currentStep === 'complete') return 100;
     const STEPS_PER_BLOCK = 5;
-    const stepInBlock = { 'kss-pre': 0, fitts: 1, typing: 1, nasatlx: 2, cognitive: 3, physical: 3, safety: 3, 'kss-post': 4 };
+    const stepInBlock = { 'kss-pre': 0, fitts: 1, typing: 1, nasatlx: 2, borg: 2, cognitive: 3, physical: 3, safety: 3, 'kss-post': 4 };
     const block = Math.min(Math.max(currentBlock || 1, 1), TOTAL_BLOCKS);
     if (currentStep === 'break') {
         return Math.round((Math.min(block, TOTAL_BLOCKS) / TOTAL_BLOCKS) * 100);
@@ -1545,8 +1569,22 @@ function showNASATLX() {
         window.fatigueEngagement?.endTest();
         sessionData.blocks[currentBlock - 1].nasatlxData = data;
         saveBackendNasaTlxResponse(data, currentBlock);
-        showBreak();
+        showBorg();
     }, currentBlock, pid);
+}
+
+// 5b. Borg CR10 (compulsory alongside NASA-TLX)
+function showBorg() {
+    currentStep = 'borg';
+    updateProgress();
+    if (typeof mountBorgScale !== 'function') { showBreak(); return; }
+    window.fatigueEngagement?.startTest({ blockNumber: currentBlock, step: 'borg' });
+    mountBorgScale(mainContent, { stage: 'post_block', blockNumber: currentBlock }, async (rating) => {
+        window.fatigueEngagement?.endTest();
+        (sessionData.blocks[currentBlock - 1] ||= {}).borgData = rating;
+        await saveBackendBorgRating(rating);
+        showBreak();
+    });
 }
 
 // 6. Break Period

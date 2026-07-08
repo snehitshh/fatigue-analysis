@@ -184,6 +184,7 @@ export const experimentApi = {
     savePhysicalFatigueLog: (payload) => insertRow("physical_fatigue_logs", payload),
     saveEngagementSummary: (payload) => insertRow("engagement_summary", payload),
     saveFatigueRating: (payload) => insertRow("fatigue_ratings", payload, { retainPermanent: false }),
+    saveBorgRating: (payload) => insertRow("borg_ratings", payload, { retainPermanent: false }),
     saveScrollSession: (payload) => insertRow("scroll_sessions", payload),
     saveScrollInterval: (payload) => insertRow("scroll_intervals", payload),
     savePhoneUsageSession: (payload) => insertRow("phone_usage_sessions", payload),
