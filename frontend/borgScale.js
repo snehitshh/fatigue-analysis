@@ -1,7 +1,7 @@
 // Borg CR10 perceived-exertion scale. Mirrors the KSS component (fatigueScale.js)
 // and reuses its .kss-* styles. 0 = nothing at all, 10 = maximal.
 function mountBorgScale(container, context, onComplete) {
-    const blockNumber = Number(context && context.blockNumber) || 1;
+    const blockNumber = context && context.blockNumber != null ? Number(context.blockNumber) : 1;
     const stage = (context && context.stage) || 'post_block';
     const LABELS = ['Nothing at all', 'Very light', 'Light', 'Moderate', 'Somewhat hard',
         'Hard', 'Hard+', 'Very hard', 'Very hard+', 'Near maximal', 'Maximal'];

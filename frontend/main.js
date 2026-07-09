@@ -761,12 +761,16 @@ function routeToStep(step) {
         case 'calibration': showDemographics(); break;
         case 'demographics': showDemographics(); break;
         case 'experiment-setup': showExperimentSetup(); break;
-        case 'kss-pre': showPreBlockRating(snapBlockOrCurrent()); break;
-        case 'kss-post': showPostBlockRating(); break;
+        case 'kss-pre': startProtocol(); break; // baseline questionnaires
+        case 'nasatlx':
+        case 'borg':
+        case 'kss-post':
+            // ponytail: resume re-runs the whole questionnaire bundle for the block;
+            // DB unique(session,block) drops duplicates, so re-answering is safe.
+            runQuestionnaires(snapBlockOrCurrent(), 'post_block', () => afterBaseQuestionnaires(snapBlockOrCurrent())); break;
         case 'fitts': showFittsTest(); break;
         case 'typing': showTypingTest(); break;
-        case 'nasatlx': showNASATLX(); break;
-        case 'break': showBreak(); break;
+        case 'break': runFatigueRound(snapBlockOrCurrent()); break;
         case 'safety': showSafetyScreening(); break;
         case 'cognitive': showCognitiveTest(); break;
         case 'physical': showPhysicalFatigueTest(); break;
@@ -1425,7 +1429,7 @@ function showExperimentSetup() {
 
             <div class="mission-footer">
                 <span class="mission-note">Three blocks with alertness ratings before and after each block.</span>
-                <button class="button primary mission-action" id="start-exp-btn" onclick="showPreBlockRating(1)">
+                <button class="button primary mission-action" id="start-exp-btn" onclick="startProtocol()">
                     Record baseline alertness
                 </button>
             </div>
@@ -1476,6 +1480,70 @@ function showPostBlockRating() {
     });
 }
 
+// --- SPARC protocol driver ---------------------------------------------------
+// baseline Q -> base -> Q -> fatigue -> base -> Q -> fatigue -> base -> Q
+// 3 base rounds, 2 fatigue rounds. Each Q = NASA-TLX + Borg CR10 + KSS (all 3 kept).
+// ponytail: baseline questionnaires use block 0 (no experiment_block, null block_id).
+function startProtocol() {
+    runQuestionnaires(0, 'pre_block', () => startBaseRound(1));
+}
+
+function startBaseRound(n) {
+    if (n > TOTAL_BLOCKS) { showCompletion(); return; }
+    currentBlock = n;
+    sessionData.blocks[n - 1] = {
+        ...(sessionData.blocks[n - 1] || {}),
+        blockNumber: n, startTime: new Date().toISOString(),
+        fatigueType: sessionFatigueTrack, baseTaskType: sessionBaseTask
+    };
+    ensureBackendBlock(n);
+    if (sessionBaseTask === 'fitts') showFittsTest(); else showTypingTest();
+}
+
+function afterBaseQuestionnaires(n) {
+    if (n < TOTAL_BLOCKS) runFatigueRound(n);
+    else showCompletion();
+}
+
+function runFatigueRound(n) {
+    currentBlock = n;
+    proceedToFatigueTest();
+}
+
+// NASA-TLX -> Borg CR10 -> KSS, each saved against blockNumber, then next().
+function runQuestionnaires(blockNumber, stage, next) {
+    const pid = sessionData.demographics.participantId || 'UNKNOWN';
+    const doKss = () => {
+        currentStep = stage === 'pre_block' ? 'kss-pre' : 'kss-post';
+        updateProgress();
+        if (typeof mountFatigueScale !== 'function') { next(); return; }
+        mountFatigueScale(mainContent, { stage, blockNumber }, async (rating) => {
+            storeKssRating(rating);
+            await saveBackendFatigueRating(rating);
+            next();
+        });
+    };
+    const doBorg = () => {
+        currentStep = 'borg';
+        updateProgress();
+        if (typeof mountBorgScale !== 'function') { doKss(); return; }
+        mountBorgScale(mainContent, { stage, blockNumber }, async (rating) => {
+            if (blockNumber >= 1) (sessionData.blocks[blockNumber - 1] ||= {}).borgData = rating;
+            await saveBackendBorgRating(rating);
+            doKss();
+        });
+    };
+    currentStep = 'nasatlx';
+    updateProgress();
+    persistSession();
+    if (typeof mountNASATLX !== 'function') { doBorg(); return; }
+    mountNASATLX(mainContent, (data) => {
+        if (blockNumber >= 1) sessionData.blocks[blockNumber - 1].nasatlxData = data;
+        saveBackendNasaTlxResponse(data, blockNumber);
+        doBorg();
+    }, blockNumber, pid);
+}
+
 // 3. Block Initialization
 function startBlock(blockNum) {
     if (blockNum > TOTAL_BLOCKS) {
@@ -1518,7 +1586,7 @@ function showFittsTest() {
     mountFittsTest(mainContent, (data) => {
         window.fatigueEngagement?.endTest();
         sessionData.blocks[currentBlock - 1].primaryData = data;
-        showNASATLX();
+        runQuestionnaires(currentBlock, 'post_block', () => afterBaseQuestionnaires(currentBlock));
     }, pid, currentBlock, {
         startMinute,
         protocolSeed,
@@ -1542,7 +1610,7 @@ function showTypingTest() {
     mountTypingTest(mainContent, (data) => {
         window.fatigueEngagement?.endTest();
         sessionData.blocks[currentBlock - 1].primaryData = data;
-        showNASATLX();
+        runQuestionnaires(currentBlock, 'post_block', () => afterBaseQuestionnaires(currentBlock));
     }, pid, currentBlock, {
         startMinute,
         protocolSeed,
@@ -1708,7 +1776,7 @@ function showCognitiveTest() {
     mountCognitiveTest(mainContent, (data) => {
         window.fatigueEngagement?.endTest();
         sessionData.blocks[currentBlock - 1].fatigueData = data;
-        showPostBlockRating();
+        startBaseRound(currentBlock + 1);
     }, currentBlock, pid, { protocolSeed });
 }
 

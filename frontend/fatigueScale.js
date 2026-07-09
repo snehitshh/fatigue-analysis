@@ -1,7 +1,7 @@
 function mountFatigueScale(container, context, onComplete) {
     const research = window.fatigueResearch || {};
     const stage = context && context.stage === 'post_block' ? 'post_block' : 'pre_block';
-    const blockNumber = Number(context && context.blockNumber) || 1;
+    const blockNumber = context && context.blockNumber != null ? Number(context.blockNumber) : 1;
     const heading = stage === 'pre_block' ? 'Current alertness before the block' : 'Current alertness after the block';
     const labels = Array.from({ length: 9 }, (_, index) => {
         const score = index + 1;
