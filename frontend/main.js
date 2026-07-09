@@ -767,7 +767,7 @@ function routeToStep(step) {
         case 'kss-post':
             // ponytail: resume re-runs the whole questionnaire bundle for the block;
             // DB unique(session,block) drops duplicates, so re-answering is safe.
-            runQuestionnaires(snapBlockOrCurrent(), 'post_block', () => afterBaseQuestionnaires(snapBlockOrCurrent())); break;
+            runQuestionnaires(snapBlockOrCurrent(), 'post_block', snapBlockOrCurrent() === TOTAL_BLOCKS, () => afterBaseQuestionnaires(snapBlockOrCurrent())); break;
         case 'fitts': showFittsTest(); break;
         case 'typing': showTypingTest(); break;
         case 'break': runFatigueRound(snapBlockOrCurrent()); break;
@@ -1485,7 +1485,7 @@ function showPostBlockRating() {
 // 3 base rounds, 2 fatigue rounds. Each Q = NASA-TLX + Borg CR10 + KSS (all 3 kept).
 // ponytail: baseline questionnaires use block 0 (no experiment_block, null block_id).
 function startProtocol() {
-    runQuestionnaires(0, 'pre_block', () => startBaseRound(1));
+    runQuestionnaires(0, 'pre_block', true, () => startBaseRound(1)); // KSS at start
 }
 
 function startBaseRound(n) {
@@ -1511,7 +1511,9 @@ function runFatigueRound(n) {
 }
 
 // NASA-TLX -> Borg CR10 -> KSS, each saved against blockNumber, then next().
-function runQuestionnaires(blockNumber, stage, next) {
+// KSS (sleepiness) only when includeKss is true - baseline (start) and the final
+// questionnaire (end); NASA-TLX + Borg run at every point.
+function runQuestionnaires(blockNumber, stage, includeKss, next) {
     const pid = sessionData.demographics.participantId || 'UNKNOWN';
     const doKss = () => {
         currentStep = stage === 'pre_block' ? 'kss-pre' : 'kss-post';
@@ -1523,14 +1525,15 @@ function runQuestionnaires(blockNumber, stage, next) {
             next();
         });
     };
+    const afterBorg = () => (includeKss ? doKss() : next());
     const doBorg = () => {
         currentStep = 'borg';
         updateProgress();
-        if (typeof mountBorgScale !== 'function') { doKss(); return; }
+        if (typeof mountBorgScale !== 'function') { afterBorg(); return; }
         mountBorgScale(mainContent, { stage, blockNumber }, async (rating) => {
             if (blockNumber >= 1) (sessionData.blocks[blockNumber - 1] ||= {}).borgData = rating;
             await saveBackendBorgRating(rating);
-            doKss();
+            afterBorg();
         });
     };
     currentStep = 'nasatlx';
@@ -1586,7 +1589,7 @@ function showFittsTest() {
     mountFittsTest(mainContent, (data) => {
         window.fatigueEngagement?.endTest();
         sessionData.blocks[currentBlock - 1].primaryData = data;
-        runQuestionnaires(currentBlock, 'post_block', () => afterBaseQuestionnaires(currentBlock));
+        runQuestionnaires(currentBlock, 'post_block', currentBlock === TOTAL_BLOCKS, () => afterBaseQuestionnaires(currentBlock)); // KSS only on the last round (end)
     }, pid, currentBlock, {
         startMinute,
         protocolSeed,
@@ -1610,7 +1613,7 @@ function showTypingTest() {
     mountTypingTest(mainContent, (data) => {
         window.fatigueEngagement?.endTest();
         sessionData.blocks[currentBlock - 1].primaryData = data;
-        runQuestionnaires(currentBlock, 'post_block', () => afterBaseQuestionnaires(currentBlock));
+        runQuestionnaires(currentBlock, 'post_block', currentBlock === TOTAL_BLOCKS, () => afterBaseQuestionnaires(currentBlock)); // KSS only on the last round (end)
     }, pid, currentBlock, {
         startMinute,
         protocolSeed,
