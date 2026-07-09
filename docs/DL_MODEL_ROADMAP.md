@@ -42,42 +42,34 @@ microcontroller (TinyML) — not a large cloud model.
    fatigue on-device (no cloud) — a product outcome, not just analysis.
 7. **Auto-labelling assistant**: pre-label our growing dataset to speed up P3.
 
-## Label schema (training targets)
+## Labels per dataset (each modality keeps its own useful label)
 
-The public datasets use different native labels (KSS, drowsy/alert classes, exertion,
-muscle-fatigue, workload). To use them **all together**, everything maps to one shared
-label, with optional auxiliary heads where a dataset provides them.
+We do NOT force one label across datasets. Each dataset type provides the label that
+suits its signal; we train a model per modality from those, and our own collected data
+is a NEW multimodal type that carries every label and ties them together.
 
-**Primary target**
-- `fatigue_level` — ordinal 3-class: **0 = low / alert, 1 = moderate, 2 = high / fatigued**.
-  (Same thing as a continuous `fatigue_score` 0-1 for regression.)
-
-**Auxiliary targets** (multi-task; each dataset supervises only the ones it has, others masked)
-- `fatigue_type` — {sleepiness, mental, physical/muscular, drowsiness}
-- `sleepiness_score` 0-1 — from KSS / PVT / drowsiness labels
-- `exertion_score` 0-1 — from Borg CR10 / grip / EMG
-- `workload_score` 0-1 — from NASA-TLX / mental-fatigue self-reports
-- `data_quality` — binary valid / artefact (derived from signal checks; powers live verification)
-
-**Dataset → label mapping**
-
-| Dataset | Native label | -> fatigue_level | fatigue_type |
+| Dataset | Signals | Label we use | What it teaches the model |
 |---|---|---|---|
-| DROZY | KSS 1-9 | 1-3 / 4-6 / 7-9 | sleepiness |
-| FatigueSet | mental-fatigue self-report | tertiles | mental |
-| Fatigue-Characterization (MR) | fatigue score | tertiles | mental |
-| MEFAR | occupational mental fatigue | tertiles | mental |
-| UL-DD | alert / drowsy | low / high | drowsiness |
-| UTA-RLDD | alert / low-vigilant / drowsy | 0 / 1 / 2 direct | drowsiness |
-| NTHU-DDD | drowsy / not | high / low | drowsiness |
-| Mendeley EMG (biceps/triceps) | contraction fatigue onset | early / mid / late = 0/1/2 | physical |
-| Handgrip force-time | fatigue index | thresholds | physical |
-| MIMIC-III (BP/SpO2/ECG) | none (not fatigue-labelled) | -- (pretraining + data_quality only) | -- |
-| **Our data** | KSS + Borg + NASA + performance drift | KSS/Borg -> level; RT/error drift confirms | all |
+| DROZY | ECG, EEG, EOG, EMG, NIR video | KSS sleepiness (1-9), PVT lapses | physiology + face -> sleepiness |
+| FatigueSet | ECG, PPG, EEG, GSR, ST, ACC | mental-fatigue self-report | wearable signals -> mental fatigue |
+| Fatigue-Characterization (MR) | EEG, ECG, EDA, SpO2, resp, temp | fatigue state | multimodal physiology -> fatigue |
+| MEFAR | EEG, HR, PPG, GSR, ST, ACC | occupational mental fatigue | office / mental fatigue |
+| UL-DD | RGB/IR/3D video + SpO2, BVP, HR, ST | drowsy vs alert | face + physiology -> drowsiness |
+| UTA-RLDD | RGB webcam video | alert / low-vigilant / drowsy | webcam face -> drowsiness (matches our camera) |
+| NTHU-DDD | IR video | drowsy/not + blink, yawn, eye, head | facial micro-signs of drowsiness |
+| Mendeley EMG (biceps/triceps) | sEMG | muscle fatigue (MDF/MNF decline; fatigued vs rested) | EMG spectral shift -> muscle fatigue |
+| Handgrip force-time | grip force | fatigue index / endurance decline | force decline -> physical fatigue |
+| MIMIC-III | ECG, ABP (BP), PPG, SpO2, resp | none (not fatigue-labelled) | pretraining + signal-quality; BP/SpO2 baselines |
+| Our data (NEW) | Typing/Pointing, Stroop, grip + ECG + EMG | KSS, Borg CR10, NASA-TLX, performance drift | the target multimodal set with all labels |
 
-Notes: MIMIC has no fatigue label, so it feeds self-supervised pretraining and the
-data-quality head only. Our own sessions carry all four self-reports plus behavioural
-drift, so they can supervise every head - the richest source once collection runs.
+**How they combine**
+- Per-modality models: an ECG/HRV model (DROZY, FatigueSet, MIMIC), an EMG model
+  (Mendeley EMG, grip), a face/video model (UTA-RLDD, NTHU, UL-DD, DROZY).
+- Our own sessions are the multimodal **fusion + validation** set - they have every
+  modality plus KSS/Borg/NASA, so they fuse the per-modality models and calibrate them
+  to our own subjective + behavioural labels.
+- A derived `data_quality` (valid/artefact) label runs on every signal for live
+  verification during collection.
 
 ## Not doing now
 Training, hyperparameter search, and the advanced DL architecture — deferred until the
