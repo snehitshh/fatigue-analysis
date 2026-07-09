@@ -42,6 +42,43 @@ microcontroller (TinyML) — not a large cloud model.
    fatigue on-device (no cloud) — a product outcome, not just analysis.
 7. **Auto-labelling assistant**: pre-label our growing dataset to speed up P3.
 
+## Label schema (training targets)
+
+The public datasets use different native labels (KSS, drowsy/alert classes, exertion,
+muscle-fatigue, workload). To use them **all together**, everything maps to one shared
+label, with optional auxiliary heads where a dataset provides them.
+
+**Primary target**
+- `fatigue_level` — ordinal 3-class: **0 = low / alert, 1 = moderate, 2 = high / fatigued**.
+  (Same thing as a continuous `fatigue_score` 0-1 for regression.)
+
+**Auxiliary targets** (multi-task; each dataset supervises only the ones it has, others masked)
+- `fatigue_type` — {sleepiness, mental, physical/muscular, drowsiness}
+- `sleepiness_score` 0-1 — from KSS / PVT / drowsiness labels
+- `exertion_score` 0-1 — from Borg CR10 / grip / EMG
+- `workload_score` 0-1 — from NASA-TLX / mental-fatigue self-reports
+- `data_quality` — binary valid / artefact (derived from signal checks; powers live verification)
+
+**Dataset → label mapping**
+
+| Dataset | Native label | -> fatigue_level | fatigue_type |
+|---|---|---|---|
+| DROZY | KSS 1-9 | 1-3 / 4-6 / 7-9 | sleepiness |
+| FatigueSet | mental-fatigue self-report | tertiles | mental |
+| Fatigue-Characterization (MR) | fatigue score | tertiles | mental |
+| MEFAR | occupational mental fatigue | tertiles | mental |
+| UL-DD | alert / drowsy | low / high | drowsiness |
+| UTA-RLDD | alert / low-vigilant / drowsy | 0 / 1 / 2 direct | drowsiness |
+| NTHU-DDD | drowsy / not | high / low | drowsiness |
+| Mendeley EMG (biceps/triceps) | contraction fatigue onset | early / mid / late = 0/1/2 | physical |
+| Handgrip force-time | fatigue index | thresholds | physical |
+| MIMIC-III (BP/SpO2/ECG) | none (not fatigue-labelled) | -- (pretraining + data_quality only) | -- |
+| **Our data** | KSS + Borg + NASA + performance drift | KSS/Borg -> level; RT/error drift confirms | all |
+
+Notes: MIMIC has no fatigue label, so it feeds self-supervised pretraining and the
+data-quality head only. Our own sessions carry all four self-reports plus behavioural
+drift, so they can supervise every head - the richest source once collection runs.
+
 ## Not doing now
 Training, hyperparameter search, and the advanced DL architecture — deferred until the
 data pipeline is collecting and the DL requirements are clarified.
