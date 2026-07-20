@@ -8,3 +8,5 @@ openpyxl
 
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch
+flask
+flask-cors

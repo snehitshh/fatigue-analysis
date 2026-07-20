@@ -30,6 +30,23 @@ python models/verify_data_quality.py       # data-quality / verification model
 python models/finetune.py                  # self-check for the fine-tune scaffold
 ```
 
+## Test console (simple frontend)
+
+A local page to type in the same values collected during data collection and see
+the trained P1 model's response + the data-quality verdict, per modality.
+
+```
+python api.py                        # starts the local API on :5001
+# then open dl-model/frontend/index.html in a browser
+```
+
+The page fetches `/api/modalities` for the exact field list (with the real
+min/mean/max or category options from the training data), so it always matches
+whatever the model was actually trained on - no hardcoded fields to keep in sync.
+"Fill typical values" pre-fills the mean/first-category for a quick sanity check.
+Needs `models/train_dl.py` and `models/verify_data_quality.py` to have been run
+first (their checkpoints are what it loads).
+
 ## Results (Leave-One-Subject-Out, so results = generalisation to a NEW person)
 
 **ECG (FatigueSet, 12 subjects)** — best classic: SVR, MAE 13.67. MLP (P1): MAE

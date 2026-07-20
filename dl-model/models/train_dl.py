@@ -146,20 +146,14 @@ def compare_and_report(dl_result, out_prefix, label_desc, n_rows, n_subjects):
 
 
 def main():
-    evaluate_modality_dl(
-        HERE / "data" / "fatigueset_final.csv",
-        numeric_features=["hr", "rmssd", "sdnn", "lf_hf", "sss_pretask", "gvas_sleepy"],
-        categorical_features=["intensity_level"],
-        target="label", group="subject_id", out_prefix="ecg_fatigueset",
-        label_desc="physical fatigue rating (continuous, ~0-100 scale)",
-    )
-    evaluate_modality_dl(
-        HERE / "data" / "emg_features.csv",
-        numeric_features=["rms", "mav", "wl", "zc", "ssc", "load_kg", "age", "weight_kg"],
-        categorical_features=["muscle", "sex"],
-        target="label", group="subject_id", out_prefix="emg_mendeley",
-        label_desc="rep-ordinal fatigue proxy (0=fresh .. 1=most fatigued rep in the set)",
-    )
+    import sys
+    sys.path.insert(0, str(HERE))
+    from modality_config import MODALITIES
+    for out_prefix, cfg in MODALITIES.items():
+        evaluate_modality_dl(
+            cfg["csv"], cfg["numeric_features"], cfg["categorical_features"],
+            cfg["target"], cfg["group"], out_prefix, cfg["label_desc"],
+        )
 
 
 if __name__ == "__main__":

@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fatigue DL Model — Test Console</title>
+<style>
+  :root { --blue:#2563eb; --blue-strong:#1d4ed8; --text:#1e293b; --muted:#64748b; --border:#e2e8f0; --bg:#f8fafc; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:'Segoe UI',Arial,sans-serif; background:linear-gradient(160deg,#fff 0%,#eaf2ff 45%,#dbeafe 100%); color:var(--text); min-height:100vh; }
+  header { padding:20px 26px; background:rgba(255,255,255,0.75); border-bottom:1px solid var(--border); }
+  header h1 { margin:0; font-size:1.3rem; color:#0f2b4a; }
+  header p { margin:4px 0 0; color:var(--muted); font-size:0.85rem; }
+  main { max-width:820px; margin:26px auto; padding:0 20px; }
+  .card { background:rgba(255,255,255,0.85); border:1px solid var(--border); border-radius:16px; padding:22px; box-shadow:0 12px 30px rgba(30,58,138,0.08); margin-bottom:20px; }
+  label { display:block; font-weight:600; font-size:0.85rem; margin:14px 0 5px; color:#334155; }
+  .hint { font-weight:400; color:#94a3b8; font-size:0.78rem; }
+  input, select { width:100%; padding:10px 12px; border-radius:9px; border:1px solid #cbd5e1; font-size:15px; background:#fff; color:var(--text); }
+  input:focus, select:focus { outline:none; border-color:var(--blue); box-shadow:0 0 0 3px rgba(37,99,235,0.15); }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:0 16px; }
+  button { font-family:inherit; font-weight:700; cursor:pointer; border:none; border-radius:9px; padding:11px 18px; font-size:0.92rem; }
+  .primary { background:linear-gradient(135deg,var(--blue),var(--blue-strong)); color:#fff; box-shadow:0 6px 16px rgba(37,99,235,0.25); }
+  .ghost { background:#fff; color:var(--text); border:1px solid var(--border); }
+  .row { display:flex; gap:10px; margin-top:18px; flex-wrap:wrap; }
+  .result { margin-top:18px; }
+  .stat { display:flex; justify-content:space-between; align-items:center; padding:14px 16px; border-radius:12px; margin-bottom:10px; border:1px solid var(--border); background:#f8fbff; }
+  .stat .label { color:var(--muted); font-size:0.85rem; }
+  .stat .value { font-weight:800; font-size:1.2rem; color:#0f2b4a; }
+  .good { color:#16a34a !important; } .bad { color:#dc2626 !important; }
+  .pill { padding:3px 10px; border-radius:999px; font-size:0.78rem; font-weight:700; }
+  .pill.good { background:rgba(22,163,74,0.12); }
+  .pill.bad { background:rgba(220,38,38,0.12); }
+  .err { color:#dc2626; margin-top:10px; font-size:0.88rem; }
+  select#modality { max-width:340px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Fatigue DL Model — Test Console</h1>
+  <p>Enter the same values collected during data collection and see the trained model's response. Local tool — run <code>python dl-model/api.py</code> first.</p>
+</header>
+<main>
+  <div class="card">
+    <label for="modality">Modality</label>
+    <select id="modality"></select>
+    <p class="hint" id="modality-desc" style="margin-top:6px;"></p>
+
+    <div id="fields" class="grid"></div>
+
+    <div class="row">
+      <button class="ghost" id="fill-btn" type="button">Fill typical values</button>
+      <button class="primary" id="predict-btn" type="button">Run model</button>
+    </div>
+    <div id="error" class="err" hidden></div>
+  </div>
+
+  <div class="card result" id="result" hidden>
+    <div class="stat">
+      <span class="label">Fatigue prediction (P1 deep model)</span>
+      <span class="value" id="pred-value">—</span>
+    </div>
+    <div class="stat">
+      <span class="label">Data-quality check</span>
+      <span class="value" id="quality-value">—</span>
+    </div>
+    <p class="hint" id="label-desc"></p>
+  </div>
+</main>
+
+<script>
+const API = "http://127.0.0.1:5001";
+let modalities = [];
+let current = null;
+
+async function load() {
+  const res = await fetch(`${API}/api/modalities`);
+  modalities = await res.json();
+  const sel = document.getElementById("modality");
+  sel.innerHTML = modalities.map(m => `<option value="${m.key}">${m.label}</option>`).join("");
+  sel.addEventListener("change", () => renderFields(sel.value));
+  renderFields(modalities[0].key);
+}
+
+function renderFields(key) {
+  current = modalities.find(m => m.key === key);
+  document.getElementById("modality-desc").textContent = "Target: " + current.label_desc;
+  const wrap = document.getElementById("fields");
+  wrap.innerHTML = current.fields.map(f => {
+    if (f.kind === "numeric") {
+      return `<div><label>${f.name} <span class="hint">(${f.min}–${f.max})</span></label>
+        <input type="number" step="any" data-field="${f.name}" placeholder="${f.mean}"></div>`;
+    }
+    return `<div><label>${f.name}</label>
+      <select data-field="${f.name}">${f.options.map(o => `<option value="${o}">${o}</option>`).join("")}</select></div>`;
+  }).join("");
+  document.getElementById("result").hidden = true;
+  document.getElementById("error").hidden = true;
+}
+
+function fillTypical() {
+  current.fields.forEach(f => {
+    const el = document.querySelector(`[data-field="${f.name}"]`);
+    if (f.kind === "numeric") el.value = f.mean;
+    else el.value = f.options[0];
+  });
+}
+
+function collectFeatures() {
+  const features = {};
+  current.fields.forEach(f => {
+    const el = document.querySelector(`[data-field="${f.name}"]`);
+    features[f.name] = f.kind === "numeric" ? (el.value === "" ? null : Number(el.value)) : el.value;
+  });
+  return features;
+}
+
+async function predict() {
+  const errBox = document.getElementById("error");
+  errBox.hidden = true;
+  const features = collectFeatures();
+  try {
+    const res = await fetch(`${API}/api/predict`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ modality: current.key, features })
+    });
+    const data = await res.json();
+    if (data.error) { errBox.textContent = data.error; errBox.hidden = false; return; }
+
+    document.getElementById("pred-value").textContent = data.fatigue_prediction;
+    document.getElementById("label-desc").textContent = "Target: " + data.label_desc;
+    const q = data.data_quality || {};
+    const qEl = document.getElementById("quality-value");
+    if (q.error) {
+      qEl.innerHTML = `<span class="hint">${q.error}</span>`;
+    } else {
+      qEl.innerHTML = q.is_anomaly
+        ? `<span class="pill bad">Flagged as anomaly</span> <span class="hint">score ${q.quality_score}</span>`
+        : `<span class="pill good">Looks normal</span> <span class="hint">score ${q.quality_score}</span>`;
+    }
+    document.getElementById("result").hidden = false;
+  } catch (e) {
+    errBox.textContent = "Could not reach the local API. Run: python dl-model/api.py";
+    errBox.hidden = false;
+  }
+}
+
+document.getElementById("fill-btn").addEventListener("click", fillTypical);
+document.getElementById("predict-btn").addEventListener("click", predict);
+load();
+</script>
+</body>
+</html>
