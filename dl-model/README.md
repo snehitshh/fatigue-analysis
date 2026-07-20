@@ -1,32 +1,76 @@
-# dl-model — Fatigue model (Phase P0: benchmark)
+# dl-model — Fatigue model (Phase P0 + P1)
 
-Plan: `docs/DL_MODEL_ROADMAP.md`. This folder holds the model side; dataset
-parsing/features live in the teammate's pipeline (currently
-[fatigueset_parser_v1](https://github.com/Shuchih-Negi/fatigueset_parser_v1) for
-FatigueSet), whose output `.csv` is copied into `data/`.
+Plan: `docs/DL_MODEL_ROADMAP.md`. Dataset parsing/features per modality; the
+teammate's own pipeline ([fatigueset_parser_v1](https://github.com/Shuchih-Negi/fatigueset_parser_v1))
+produced `data/fatigueset_final.csv` (ECG/HRV). This folder additionally parses a
+second, freely-downloadable dataset (Mendeley EMG) and adds the model side: the
+P0 classic-ML benchmark, the P1 lightweight deep model, and the data-quality
+verification model.
 
-## Run
+## Datasets used
+
+| Modality | Dataset | Subjects | Windows | Label |
+|---|---|---|---|---|
+| ECG/HRV | FatigueSet (via fatigueset_parser_v1) | 12 | 677 | physical fatigue rating (0-100) |
+| EMG | Mendeley "EMG for Muscle Fatigue" (biceps/triceps), DOI 10.17632/8j2p29hnbv.1 | 30 | 480 | rep-ordinal fatigue proxy (0-1) |
+
+Each dataset keeps its OWN label (per `docs/DL_MODEL_ROADMAP.md` §2 — no forced
+common label). Per-modality models stay separate; our own collected data (once
+it exists) is the multimodal fusion/validation set.
+
+## Setup
 
 ```
 pip install -r requirements.txt
-python train_baselines.py
+python download/download_emg_mendeley.py   # fetches the EMG raw files (~29 MB, gitignored)
+python parsers/emg_mendeley.py             # -> data/emg_features.csv
+python train_baselines.py                  # Phase P0: classic ML, both modalities
+python models/train_dl.py                  # Phase P1: PyTorch MLP, both modalities
+python models/verify_data_quality.py       # data-quality / verification model
+python models/finetune.py                  # self-check for the fine-tune scaffold
 ```
 
-Writes `results/model_comparison.csv` and `results/model_comparison_report.md`.
+## Results (Leave-One-Subject-Out, so results = generalisation to a NEW person)
 
-## What this does
-Trains 7-8 classic regressors (Dummy, Linear/Ridge, KNN, SVR, Random Forest,
-HistGradientBoosting, XGBoost) to predict the FatigueSet physical-fatigue label
-from HR/HRV features, validated with **Leave-One-Subject-Out** CV (12 folds — a
-subject's data is never in both train and test). This sets the classic-ML
-benchmark bar (P0) a later lightweight deep model (P1) must beat.
+**ECG (FatigueSet, 12 subjects)** — best classic: SVR, MAE 13.67. MLP (P1): MAE
+17.86 — classic wins. Even the Dummy (mean) baseline scores negative R2: fatigue
+baselines vary a lot **between subjects**, so per-subject calibration matters
+more than model choice at 12 subjects.
 
-## Current result (see results/model_comparison_report.md for full write-up)
-All models land close to the Dummy baseline; even Dummy scores negative R² under
-LOSO. That means fatigue baselines vary a lot **between subjects** — not a bug.
-Implication: per-subject calibration (our own protocol collects a baseline
-KSS/Borg/NASA per participant) matters more than model choice at this sample size.
+**EMG (Mendeley, 30 subjects)** — best classic: Random Forest, MAE 0.274, **R2 =
+0.21** (a real, positive signal — RMS/MAV/waveform-length genuinely track muscle
+fatigue). MLP (P1): MAE 0.301, R2 0.10 — classic still wins, but less of a gap.
+
+**Classic ML beats the from-scratch deep model on both modalities right now.**
+This matches well-established findings on small tabular datasets (a few hundred
+rows) — deep nets need more data to pull ahead. That's expected, not a failure;
+see full write-ups in `results/*_report.md`.
+
+## The data-quality / verification model (the primary purpose of this work)
+
+`models/verify_data_quality.py` fits an unsupervised IsolationForest per
+modality on the valid feature distribution (no fatigue label needed). At real
+collection time, score a new incoming window:
+```python
+from models.verify_data_quality import score_window
+score_window("ecg", {"hr": 78, "rmssd": 30, "sdnn": 40, "lf_hf": 1.2})
+# -> {"is_anomaly": False, "quality_score": 0.18}
+```
+A low/negative score = implausible reading (bad electrode contact, motion
+artefact, sensor fault) - flag it for the operator instead of silently keeping
+bad data. ~5% of the existing data is flagged in each modality (by design,
+`contamination=0.05`).
+
+## The "trains itself on new data" mechanism
+
+`models/finetune.py` continues training a saved checkpoint on new same-schema
+data (low learning rate, reuses the ORIGINAL fitted preprocessor so feature
+scaling stays consistent) and refits the quality detector on old+new combined.
+Proven with a running self-check (`python models/finetune.py`) against a real
+held-out slice of the existing data. **Not yet exercised on real field data** -
+our own collection currently has ~0 sessions in the live DB; run this once it does.
 
 ## Next
-- Add per-modality comparisons as more datasets are parsed (EMG, video).
-- P1: a small quantised model once the benchmark + our own data collection are ready.
+- Add more datasets/modalities as the teammate parses them (video/PERCLOS next).
+- P2: fine-tune/calibrate on our own multimodal sessions (all 3 questionnaires +
+  ECG + task performance) once collection produces real data.

@@ -1,0 +1,18 @@
+[
+  {
+    "modality": "ecg",
+    "n_rows": 677,
+    "n_flagged": 34,
+    "flagged_pct": 5.0,
+    "score_min": -0.234,
+    "score_max": 0.213
+  },
+  {
+    "modality": "emg",
+    "n_rows": 480,
+    "n_flagged": 24,
+    "flagged_pct": 5.0,
+    "score_min": -0.146,
+    "score_max": 0.195
+  }
+]

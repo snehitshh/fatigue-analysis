@@ -1,4 +1,20 @@
-# Fatigue Model — Roadmap (planning only, no training yet)
+# Fatigue Model — Roadmap
+
+## Status (see dl-model/README.md for full detail)
+- **P0 done** for ECG (FatigueSet, 12 subj) + EMG (Mendeley, 30 subj): classic-ML
+  benchmark, Leave-One-Subject-Out validated.
+- **P1 done** for both: a small PyTorch MLP, same validation. Classic ML still
+  wins at this sample size (expected; matches the literature on small tabular
+  data) — EMG shows a real positive R2 (~0.21), ECG does not yet (12 subjects,
+  large between-subject variance).
+- **Data-quality verification model** built (IsolationForest per modality) — the
+  primary purpose of this work: score a new incoming reading, flag implausible
+  ones. Working + sanity-checked.
+- **Fine-tune scaffold** built + self-checked — ready for when our own collection
+  has real sessions (currently ~0 in the live DB).
+- **Not done yet**: P2 (train on our own data — blocked on real collection),
+  P3 (advanced/multimodal fusion), video/PERCLOS modality.
+
 
 Goal: a **lightweight, edge-deployable** fatigue model, benchmarked against public
 datasets, then refined on our own collected data. Small enough to run on a

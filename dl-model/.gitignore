@@ -1,0 +1,4 @@
+# Regenerable via download_*.py / parsers/*.py + models/*.py - don't bloat the repo.
+data/raw_emg_mendeley/
+models/checkpoints/
+__pycache__/

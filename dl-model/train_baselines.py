@@ -1,19 +1,19 @@
 """
 Model comparison study - Phase P0 benchmark (see docs/DL_MODEL_ROADMAP.md).
 
-Compares classic ML baselines + gradient-boosted models on the FatigueSet dataset
-(fatigueset_parser_v1 output) to set the benchmark bar a later deep model must beat.
+Compares classic ML baselines + gradient-boosted models per modality, to set the
+benchmark bar a later deep model must beat. Runs once per dataset/modality:
+  - FatigueSet (ECG/HRV): 12 subjects, continuous physical-fatigue label.
+  - Mendeley EMG (biceps/triceps): 30 subjects, rep-ordinal fatigue proxy label.
 
-Target: `label` (physical fatigue rating, 0-100 continuous scale).
-Validation: Leave-One-Subject-Out (LOSO) across the 12 subjects - a subject's data
-is never in both train and test, which prevents identity leakage (the model
-learning "this is P07" instead of "this is fatigue").
+Validation: Leave-One-Subject-Out (LOSO) - a subject's data is never in both train
+and test, which prevents identity leakage (the model learning "this is P07"
+instead of "this is fatigue").
 
 Usage:
     python dl-model/train_baselines.py
-Writes: dl-model/results/model_comparison.csv, model_comparison_report.md
+Writes: dl-model/results/model_comparison_<modality>.csv and _report.md
 """
-import json
 from pathlib import Path
 
 import numpy as np
@@ -31,53 +31,54 @@ from sklearn.svm import SVR
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 HERE = Path(__file__).parent
-DATA = HERE / "data" / "fatigueset_final.csv"
 RESULTS = HERE / "results"
 RESULTS.mkdir(exist_ok=True)
 
-NUMERIC_FEATURES = ["hr", "rmssd", "sdnn", "lf_hf", "sss_pretask", "gvas_sleepy"]
-CATEGORICAL_FEATURES = ["intensity_level"]
-TARGET = "label"
-GROUP = "subject_id"
+
+def make_models(label_scale=1.0):
+    # ponytail: SVR's epsilon is an absolute margin, so it must scale with the
+    # label's range or SVR silently collapses to predicting the mean (this bit
+    # us on the 0-1 EMG label with a fixed epsilon=1.0 tuned for the 0-100 ECG one).
+    models = {
+        "Dummy (mean)": DummyRegressor(strategy="mean"),
+        "Linear Regression": LinearRegression(),
+        "Ridge": Ridge(alpha=1.0),
+        "KNN (k=5)": KNeighborsRegressor(n_neighbors=5),
+        "SVR (RBF)": SVR(kernel="rbf", C=10, epsilon=0.01 * label_scale),
+        "Random Forest": RandomForestRegressor(n_estimators=300, max_depth=6, random_state=42),
+        "HistGradientBoosting": HistGradientBoostingRegressor(max_depth=4, random_state=42),
+    }
+    try:
+        from xgboost import XGBRegressor
+        models["XGBoost"] = XGBRegressor(n_estimators=300, max_depth=4, learning_rate=0.05,
+                                          subsample=0.8, colsample_bytree=0.8, random_state=42)
+    except ImportError:
+        pass  # ponytail: xgboost optional, sklearn models still give a full comparison
+    return models
 
 
-def build_pipeline(model):
+def build_pipeline(model, numeric_features, categorical_features):
     pre = ColumnTransformer([
         ("num", Pipeline([("impute", SimpleImputer(strategy="median")),
-                           ("scale", StandardScaler())]), NUMERIC_FEATURES),
-        ("cat", OneHotEncoder(handle_unknown="ignore"), CATEGORICAL_FEATURES),
+                           ("scale", StandardScaler())]), numeric_features),
+        ("cat", OneHotEncoder(handle_unknown="ignore"), categorical_features),
     ])
     return Pipeline([("pre", pre), ("model", model)])
 
 
-MODELS = {
-    "Dummy (mean)": DummyRegressor(strategy="mean"),
-    "Linear Regression": LinearRegression(),
-    "Ridge": Ridge(alpha=1.0),
-    "KNN (k=5)": KNeighborsRegressor(n_neighbors=5),
-    "SVR (RBF)": SVR(kernel="rbf", C=10, epsilon=1.0),
-    "Random Forest": RandomForestRegressor(n_estimators=300, max_depth=6, random_state=42),
-    "HistGradientBoosting": HistGradientBoostingRegressor(max_depth=4, random_state=42),
-}
-try:
-    from xgboost import XGBRegressor
-    MODELS["XGBoost"] = XGBRegressor(n_estimators=300, max_depth=4, learning_rate=0.05,
-                                      subsample=0.8, colsample_bytree=0.8, random_state=42)
-except ImportError:
-    pass  # ponytail: xgboost optional, sklearn models still give a full comparison
-
-
-def evaluate(df):
-    X = df[NUMERIC_FEATURES + CATEGORICAL_FEATURES]
-    y = df[TARGET].values
-    groups = df[GROUP].values
+def evaluate_modality(csv_path, numeric_features, categorical_features, target, group, out_prefix, label_desc):
+    df = pd.read_csv(csv_path)
+    X = df[numeric_features + categorical_features]
+    y = df[target].values
+    groups = df[group].values
     logo = LeaveOneGroupOut()
+    label_scale = float(np.ptp(y))  # range of the label, for a scale-appropriate SVR epsilon
 
     rows = []
-    for name, model in MODELS.items():
+    for name, model in make_models(label_scale).items():
         fold_mae, fold_rmse, fold_r2 = [], [], []
         for train_idx, test_idx in logo.split(X, y, groups):
-            pipe = build_pipeline(model)
+            pipe = build_pipeline(model, numeric_features, categorical_features)
             pipe.fit(X.iloc[train_idx], y[train_idx])
             pred = pipe.predict(X.iloc[test_idx])
             fold_mae.append(mean_absolute_error(y[test_idx], pred))
@@ -89,21 +90,24 @@ def evaluate(df):
             "RMSE_mean": np.mean(fold_rmse), "RMSE_std": np.std(fold_rmse),
             "R2_mean": np.nanmean(fold_r2), "R2_std": np.nanstd(fold_r2),
         })
-    return pd.DataFrame(rows).sort_values("MAE_mean")
+    results = pd.DataFrame(rows).sort_values("MAE_mean")
+    results.to_csv(RESULTS / f"model_comparison_{out_prefix}.csv", index=False)
+    write_report(results, df, out_prefix, group, label_desc)
+    print(f"\n=== {out_prefix} ===")
+    print(results.to_string(index=False))
+    return results
 
 
-def write_report(results, df):
+def write_report(results, df, out_prefix, group_col, label_desc):
     best = results.iloc[0]
+    dummy_r2 = results.loc[results["model"] == "Dummy (mean)", "R2_mean"].iloc[0]
     lines = [
-        "# Model Comparison Study - FatigueSet (Phase P0 benchmark)",
+        f"# Model Comparison Study - {out_prefix} (Phase P0 benchmark)",
         "",
-        f"Dataset: `dl-model/data/fatigueset_final.csv` "
-        f"({df.shape[0]} windows, {df['subject_id'].nunique()} subjects, "
-        f"{df.groupby('subject_id')['session_id'].nunique().mean():.0f} sessions/subject).",
-        f"Target: `label` (physical fatigue rating, continuous 0-100).",
-        "Validation: Leave-One-Subject-Out cross-validation (12 folds) - no subject's "
-        "data appears in both train and test in any fold, so results reflect generalisation "
-        "to a NEW person, not memorisation of a known one.",
+        f"{df.shape[0]} windows, {df[group_col].nunique()} subjects. Target: {label_desc}.",
+        "Validation: Leave-One-Subject-Out cross-validation - no subject's data appears "
+        "in both train and test in any fold, so results reflect generalisation to a NEW "
+        "person, not memorisation of a known one.",
         "",
         "## Results (sorted by MAE, lower is better)",
         "",
@@ -111,51 +115,38 @@ def write_report(results, df):
         "|---|---|---|---|",
     ]
     for _, r in results.iterrows():
-        lines.append(f"| {r['model']} | {r['MAE_mean']:.2f} +/- {r['MAE_std']:.2f} | "
-                      f"{r['RMSE_mean']:.2f} +/- {r['RMSE_std']:.2f} | "
+        lines.append(f"| {r['model']} | {r['MAE_mean']:.3f} +/- {r['MAE_std']:.3f} | "
+                      f"{r['RMSE_mean']:.3f} +/- {r['RMSE_std']:.3f} | "
                       f"{r['R2_mean']:.3f} +/- {r['R2_std']:.3f} |")
-    dummy_r2 = results.loc[results["model"] == "Dummy (mean)", "R2_mean"].iloc[0]
     lines += [
         "",
-        f"**Best on this benchmark: {best['model']}** (MAE {best['MAE_mean']:.2f}). "
-        f"The Dummy (mean) row is the naive baseline any real model must beat.",
-        "",
-        "## Interpretation",
-        "",
-        f"Even the Dummy (predict-the-population-mean) baseline scores R2 = {dummy_r2:.2f} "
-        "(negative) under Leave-One-Subject-Out. A negative R2 here does NOT mean the code is "
-        "wrong - it means each held-out subject's fatigue level sits far from the population "
-        "mean learned from the other 11, i.e. **fatigue baselines vary a lot between people**. "
-        "All models land close to the Dummy baseline, so with only 12 subjects, a population-level "
-        "model struggles to generalise to an unseen person from raw HR/HRV values alone.",
-        "",
-        "This is a genuine, useful finding for the study, not a failure:",
-        "- **Recommendation 1**: normalise the label and/or features per subject (e.g. z-score "
-        "against that subject's own baseline session) before pooling across subjects.",
-        "- **Recommendation 2**: this is exactly why P2 (training on OUR data) matters - our "
-        "protocol collects a KSS/Borg/NASA baseline for every participant, enabling per-person "
-        "calibration that FatigueSet's public data doesn't provide.",
-        "- **Recommendation 3**: more subjects (combining datasets per modality, per the roadmap) "
-        "should reduce this variance and give the population model more to generalise from.",
-        "",
-        "## Notes",
-        "- Features: hr, rmssd, sdnn, lf_hf (median-imputed where missing - 30s windows),",
-        "  sss_pretask, gvas_sleepy, intensity_level (one-hot).",
-        "- This is the P0 classic-ML benchmark from docs/DL_MODEL_ROADMAP.md - the bar a",
-        "  later lightweight deep model (P1) must beat on the same subjects/split.",
-        "- Only ECG/HRV features are used here (FatigueSet's parsed modality). Other",
-        "  datasets (EMG, video) get their own per-modality comparison the same way.",
+        f"**Best on this benchmark: {best['model']}** (MAE {best['MAE_mean']:.3f}).",
+        f"Dummy (mean) baseline R2 = {dummy_r2:.3f} - "
+        + ("close to 0, population mean is a reasonable per-subject predictor here."
+           if dummy_r2 > -0.5 else
+           "notably negative, meaning per-subject baselines vary a lot and a population "
+           "model needs per-subject calibration more than a fancier algorithm."),
     ]
-    (RESULTS / "model_comparison_report.md").write_text("\n".join(lines), encoding="utf-8")
+    (RESULTS / f"model_comparison_{out_prefix}_report.md").write_text("\n".join(lines), encoding="utf-8")
 
 
 def main():
-    df = pd.read_csv(DATA)
-    results = evaluate(df)
-    results.to_csv(RESULTS / "model_comparison.csv", index=False)
-    write_report(results, df)
-    print(results.to_string(index=False))
-    print(f"\nWrote {RESULTS / 'model_comparison.csv'} and model_comparison_report.md")
+    # FatigueSet: ECG/HRV, continuous physical-fatigue label, 12 subjects.
+    evaluate_modality(
+        HERE / "data" / "fatigueset_final.csv",
+        numeric_features=["hr", "rmssd", "sdnn", "lf_hf", "sss_pretask", "gvas_sleepy"],
+        categorical_features=["intensity_level"],
+        target="label", group="subject_id", out_prefix="ecg_fatigueset",
+        label_desc="physical fatigue rating (continuous, ~0-100 scale)",
+    )
+    # Mendeley EMG: time-domain features, rep-ordinal fatigue proxy, 30 subjects.
+    evaluate_modality(
+        HERE / "data" / "emg_features.csv",
+        numeric_features=["rms", "mav", "wl", "zc", "ssc", "load_kg", "age", "weight_kg"],
+        categorical_features=["muscle", "sex"],
+        target="label", group="subject_id", out_prefix="emg_mendeley",
+        label_desc="rep-ordinal fatigue proxy (0=fresh .. 1=most fatigued rep in the set)",
+    )
 
 
 if __name__ == "__main__":
