@@ -47,6 +47,13 @@
 
     <div id="fields" class="grid"></div>
 
+    <div id="custom-fields" style="margin-top:10px;"></div>
+    <div class="row">
+      <button class="ghost" id="add-custom-btn" type="button">+ Add a new field to test</button>
+    </div>
+    <p class="hint">Not part of the trained model yet? Add it anyway - it gets logged so there's
+    real data to retrain on later (see dl-model/README.md "Extending with a new field").</p>
+
     <div class="row">
       <button class="ghost" id="fill-btn" type="button">Fill typical values</button>
       <button class="primary" id="predict-btn" type="button">Run model</button>
@@ -64,6 +71,7 @@
       <span class="value" id="quality-value">—</span>
     </div>
     <p class="hint" id="label-desc"></p>
+    <p class="hint" id="unknown-note" style="display:none;"></p>
   </div>
 </main>
 
@@ -93,8 +101,21 @@ function renderFields(key) {
     return `<div><label>${f.name}</label>
       <select data-field="${f.name}">${f.options.map(o => `<option value="${o}">${o}</option>`).join("")}</select></div>`;
   }).join("");
+  document.getElementById("custom-fields").innerHTML = "";
   document.getElementById("result").hidden = true;
   document.getElementById("error").hidden = true;
+}
+
+function addCustomField() {
+  const wrap = document.getElementById("custom-fields");
+  const row = document.createElement("div");
+  row.style.cssText = "display:flex; gap:8px; margin-top:8px; align-items:center;";
+  row.innerHTML = `
+    <input type="text" placeholder="new field name (e.g. spo2)" class="custom-name" style="flex:1;">
+    <input type="text" placeholder="value" class="custom-value" style="flex:1;">
+    <button class="ghost" type="button" style="padding:8px 12px;">remove</button>`;
+  row.querySelector("button").addEventListener("click", () => row.remove());
+  wrap.appendChild(row);
 }
 
 function fillTypical() {
@@ -110,6 +131,11 @@ function collectFeatures() {
   current.fields.forEach(f => {
     const el = document.querySelector(`[data-field="${f.name}"]`);
     features[f.name] = f.kind === "numeric" ? (el.value === "" ? null : Number(el.value)) : el.value;
+  });
+  document.querySelectorAll("#custom-fields > div").forEach(row => {
+    const name = row.querySelector(".custom-name").value.trim();
+    const val = row.querySelector(".custom-value").value.trim();
+    if (name) features[name] = isNaN(Number(val)) ? val : Number(val);
   });
   return features;
 }
@@ -137,6 +163,13 @@ async function predict() {
         ? `<span class="pill bad">Flagged as anomaly</span> <span class="hint">score ${q.quality_score}</span>`
         : `<span class="pill good">Looks normal</span> <span class="hint">score ${q.quality_score}</span>`;
     }
+    const note = document.getElementById("unknown-note");
+    if (data.unknown_fields_logged && data.unknown_fields_logged.length) {
+      note.style.display = "block";
+      note.textContent = `Logged new field(s) not yet part of the trained model (didn't affect this prediction): ${data.unknown_fields_logged.join(", ")}. Once enough real data accumulates, add them to modality_config.py and retrain.`;
+    } else {
+      note.style.display = "none";
+    }
     document.getElementById("result").hidden = false;
   } catch (e) {
     errBox.textContent = "Could not reach the local API. Run: python dl-model/api.py";
@@ -146,6 +179,7 @@ async function predict() {
 
 document.getElementById("fill-btn").addEventListener("click", fillTypical);
 document.getElementById("predict-btn").addEventListener("click", predict);
+document.getElementById("add-custom-btn").addEventListener("click", addCustomField);
 load();
 </script>
 </body>

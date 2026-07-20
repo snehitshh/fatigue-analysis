@@ -82,6 +82,23 @@ def load_quality(modality: str):
     return bundle["pipeline"], bundle["features"]
 
 
+UNKNOWN_FIELDS_LOG = HERE / "results" / "unknown_fields_log.csv"
+
+
+def log_unknown_fields(modality: str, unknown: dict):
+    """A field the model has never seen can't be used for prediction until we
+    retrain on it - but we should still capture it now, or there is no data to
+    retrain on later. Appends one row per submission with a timestamp so a
+    future field's real value distribution can be studied once enough
+    submissions accumulate (see README 'Extending with a new field')."""
+    if not unknown:
+        return
+    row = {"timestamp": pd.Timestamp.utcnow().isoformat(), "modality": modality, **unknown}
+    df = pd.DataFrame([row])
+    UNKNOWN_FIELDS_LOG.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(UNKNOWN_FIELDS_LOG, mode="a", header=not UNKNOWN_FIELDS_LOG.exists(), index=False)
+
+
 @app.post("/api/predict")
 def predict():
     body = request.get_json(force=True) or {}
@@ -101,8 +118,15 @@ def predict():
     with torch.no_grad():
         pred = float(model(torch.tensor(X, dtype=torch.float32)).item())
 
+    # Any submitted field the model was NOT trained on can't affect this
+    # prediction, but capture it so there's real data to retrain on once it's
+    # worth adding (see modality_config.py + README).
+    unknown = {k: v for k, v in features.items() if k not in cols}
+    log_unknown_fields(modality, unknown)
+
     result = {"modality": modality, "fatigue_prediction": round(pred, 4),
-              "label_desc": MODALITIES[modality]["label_desc"]}
+              "label_desc": MODALITIES[modality]["label_desc"],
+              "unknown_fields_logged": list(unknown.keys())}
 
     try:
         q_pipe, q_features = load_quality(modality)

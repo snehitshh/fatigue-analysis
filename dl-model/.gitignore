@@ -2,3 +2,4 @@
 data/raw_emg_mendeley/
 models/checkpoints/
 __pycache__/
+results/unknown_fields_log.csv

@@ -63,6 +63,27 @@ This matches well-established findings on small tabular datasets (a few hundred
 rows) — deep nets need more data to pull ahead. That's expected, not a failure;
 see full write-ups in `results/*_report.md`.
 
+## Extending with a new field
+
+The trained model can only use the fields it was trained on - it can't learn a
+pattern from a signal it's never seen. If you start collecting a new field (a
+new sensor channel, a new derived metric):
+
+1. **Now**: submit it anyway through the test console's "+ Add a new field to
+   test" box, or just include the extra key in a `/api/predict` request. It
+   won't affect the prediction yet, but `api.py` logs it to
+   `results/unknown_fields_log.csv` (gitignored - it's operational data, not a
+   dataset artefact) - so real values accumulate instead of being silently
+   dropped. This is how "finding new patterns" actually starts: there is no
+   pattern to find until there is data.
+2. **Once enough real data exists** for that field: add it to the right
+   modality's `numeric_features` / `categorical_features` list in
+   `modality_config.py`, make sure the parser/feature-extractor also produces
+   it, then re-run `train_baselines.py` (new P0 benchmark including it) and
+   `models/train_dl.py` (retrains the MLP with the wider input - the test
+   console picks it up automatically next time it fetches `/api/modalities`,
+   nothing else to change).
+
 ## The data-quality / verification model (the primary purpose of this work)
 
 `models/verify_data_quality.py` fits an unsupervised IsolationForest per
