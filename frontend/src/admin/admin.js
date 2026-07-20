@@ -448,6 +448,7 @@ async function loadDetail(session) {
     }).join("");
 
     const measRows = (meas || []).map((m) => `<tr>
+        <td>${m.block_number == null ? "Whole session" : "Block " + esc(m.block_number)}</td>
         <td>${esc(m.measurement_type)}</td>
         <td>${esc(m.source)}</td>
         <td>${m.heart_rate_bpm == null ? "—" : esc(m.heart_rate_bpm)}</td>
@@ -482,9 +483,10 @@ async function loadDetail(session) {
             </table></div>
 
             <h2>Measurements (ECG / physical / device)</h2>
+            <p class="muted" style="margin-top:0;">Tagged with the task block it corresponds to, so it can be compared against that block's task performance and KSS/Borg/NASA-TLX.</p>
             <div class="scroll-x"><table>
-                <thead><tr><th>Type</th><th>Source</th><th>HR (bpm)</th><th>HRV (ms)</th><th>Value</th><th>Notes</th><th>Recorded</th></tr></thead>
-                <tbody>${measRows || `<tr><td colspan="7" class="muted">No measurements uploaded for this candidate.</td></tr>`}</tbody>
+                <thead><tr><th>Block</th><th>Type</th><th>Source</th><th>HR (bpm)</th><th>HRV (ms)</th><th>Value</th><th>Notes</th><th>Recorded</th></tr></thead>
+                <tbody>${measRows || `<tr><td colspan="8" class="muted">No measurements uploaded for this candidate.</td></tr>`}</tbody>
             </table></div>
             ${frameGallery}
         </div>`;
@@ -545,6 +547,7 @@ async function loadMeasurements() {
 
     const measRows = (meas || []).map((m) => `<tr>
         <td><strong>${esc(m.participant_code)}</strong></td>
+        <td>${m.block_number == null ? "Whole session" : "Block " + esc(m.block_number)}</td>
         <td>${esc(m.measurement_type)}</td>
         <td>${esc(m.source)}</td>
         <td>${m.heart_rate_bpm == null ? "—" : esc(m.heart_rate_bpm)}</td>
@@ -575,6 +578,15 @@ async function loadMeasurements() {
                             <option value="physical">Physical (manual)</option>
                         </select>
                     </div>
+                    <div style="flex:1; min-width:160px;">
+                        <label for="m-block">Block <span class="hint">(which task block this reading is from)</span></label>
+                        <select id="m-block">
+                            <option value="">Whole session</option>
+                            <option value="1">Block 1</option>
+                            <option value="2">Block 2</option>
+                            <option value="3">Block 3</option>
+                        </select>
+                    </div>
                 </div>
                 <div id="ecg-fields" style="display:flex; flex-wrap:wrap; gap:16px;">
                     <div style="flex:1; min-width:160px;"><label for="m-hr">Heart rate (bpm)</label><input id="m-hr" type="number" step="0.1" inputmode="decimal"></div>
@@ -599,8 +611,8 @@ async function loadMeasurements() {
             <div class="toolbar"><input type="search" id="meas-filter" placeholder="Filter…">
                 <span class="muted" id="meas-count">${(meas || []).length} row(s)</span></div>
             <div class="scroll-x"><table>
-                <thead><tr><th>Participant</th><th>Type</th><th>Source</th><th>HR</th><th>HRV</th><th>Value</th><th>Notes</th><th>Recorded</th></tr></thead>
-                <tbody>${measRows || `<tr><td colspan="8" class="muted">No measurements uploaded yet.</td></tr>`}</tbody>
+                <thead><tr><th>Participant</th><th>Block</th><th>Type</th><th>Source</th><th>HR</th><th>HRV</th><th>Value</th><th>Notes</th><th>Recorded</th></tr></thead>
+                <tbody>${measRows || `<tr><td colspan="9" class="muted">No measurements uploaded yet.</td></tr>`}</tbody>
             </table></div>`}
         </div>`;
 
@@ -633,6 +645,7 @@ function wireUploadForm() {
             participantCode: selectedSession && selectedSession.participant_code,
             sessionId: selectedSession && selectedSession.session_id,
             type: typeSel.value,
+            blockNumber: document.getElementById("m-block").value,
             heartRate: document.getElementById("m-hr").value,
             hrv: document.getElementById("m-hrv").value,
             value: document.getElementById("m-value").value,
