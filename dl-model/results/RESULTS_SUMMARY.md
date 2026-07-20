@@ -27,7 +27,56 @@ yet. This is intentional — the plan (see `docs/DL_MODEL_ROADMAP.md`) is:
    software interaction alone can reveal fatigue that an independent ECG
    reading also confirms.
 
-## 3. Datasets used
+## 3. Team contribution — the FatigueSet pipeline and how it was continued
+
+The ECG/HRV dataset used below (FatigueSet) was prepared by a teammate, not
+built from scratch by the modelling side of the project. Splitting the work
+this way — one person preparing datasets, the other building the model — let
+both move in parallel instead of the model waiting on data collection.
+
+**What the teammate built** ([fatigueset_parser_v1](https://github.com/Shuchih-Negi/fatigueset_parser_v1),
+public repo): a complete pipeline for the FatigueSet dataset —
+
+- Downloaded the raw dataset (ECG waveform + RR intervals, per subject/session).
+- **Task-aligned windowing**: sliced each recording into windows using the
+  experiment's own task-block markers rather than fixed wall-clock time, so no
+  window straddles a transition between tasks.
+- **HRV feature extraction**: heart rate, RMSSD, SDNN, LF/HF, plus a
+  `data_quality` flag, per window.
+- **Label join**: matched each window to its corresponding physical/mental
+  fatigue self-report from the study, with a documented fallback.
+- Combined all 12 subjects into one final, labelled dataset (`fatigueset_final.csv`,
+  677 windows) ready for model training.
+
+**Review and feedback given**: the pipeline was reviewed and the pattern
+approved as the template for other datasets. Two corrections were requested and
+incorporated: (1) LF/HF (a frequency-domain HRV measure) is unreliable on
+30-second windows — it needs roughly two minutes of data — so a
+`lf_hf_low_confidence` flag was added rather than reporting an unreliable
+number silently; (2) an EDA notebook was added to check label distributions and
+missing data per subject.
+
+**How the model side continued from there**:
+
+- The teammate's finished `fatigueset_final.csv` was used as-is as the ECG/HRV
+  modality's training data (Section 5 below).
+- The exact same pipeline pattern (parser → per-modality feature extractor →
+  one unified final CSV) was replicated independently for a second,
+  freely-downloadable dataset (Mendeley EMG, 30 subjects), following the same
+  final-CSV column schema the teammate established, so a second modality was
+  ready immediately rather than waiting, and both datasets stay directly
+  comparable.
+- The model side — the classic-ML benchmark (Phase P0), the PyTorch deep model
+  (Phase P1), the data-quality verification model, the fine-tuning mechanism,
+  and the local test console — was built end-to-end and evaluated on both the
+  teammate's ECG data and the newly-added EMG data.
+
+**Going forward**: the teammate continues parsing additional public datasets
+(a video/PERCLOS dataset is next) following this same established pattern; the
+model side continues refining the benchmark and will fine-tune on our own
+collected data (Phase P2) once real sessions exist.
+
+## 4. Datasets used
 
 | Modality | Dataset | Subjects | Windows | Label |
 |---|---|---|---|---|
@@ -37,7 +86,7 @@ yet. This is intentional — the plan (see `docs/DL_MODEL_ROADMAP.md`) is:
 Each dataset keeps its own label — we do not force a single common label across
 datasets (see roadmap §2 for the reasoning).
 
-## 4. Method
+## 5. Method
 
 - **Phase P0** — classic ML baselines (Linear/Ridge Regression, KNN, SVR,
   Random Forest, HistGradientBoosting, XGBoost) per modality.
@@ -48,7 +97,7 @@ datasets (see roadmap §2 for the reasoning).
   subject's data is never in both train and test in the same fold, so results
   measure generalisation to a genuinely new person.
 
-## 5. Results
+## 6. Results
 
 **ECG (FatigueSet, 12 subjects)**
 
@@ -67,7 +116,7 @@ datasets (see roadmap §2 for the reasoning).
 Full per-model tables are in the accompanying `model_comparison_*_report.md`
 and `dl_model_*_report.md` files.
 
-## 6. Interpretation
+## 7. Interpretation
 
 - **Classic ML currently beats the from-scratch deep model on both
   modalities.** This matches well-established findings on small tabular
@@ -84,7 +133,7 @@ and `dl_model_*_report.md` files.
   participant, via the KSS/Borg/NASA-TLX questionnaires at the start of each
   session) matters more than further tuning the current model.
 
-## 7. Also built: the data-quality verification model
+## 8. Also built: the data-quality verification model
 
 A separate, unsupervised model (IsolationForest, one per modality) scores
 whether a new incoming reading looks physiologically plausible — e.g. it
@@ -93,7 +142,7 @@ normal one (heart rate of 75 bpm). This is the mechanism intended to catch bad
 electrode contact, motion artefact, or sensor faults live during our own data
 collection, rather than discovering the problem during analysis.
 
-## 8. A local test console
+## 9. A local test console
 
 A small internal tool (Flask API + a plain HTML page, `dl-model/api.py` +
 `dl-model/frontend/index.html`) lets us type in the same values our platform
@@ -102,7 +151,7 @@ modality. It also captures any field the model hasn't been trained on yet
 (instead of silently ignoring it), so there is real data to work with once we
 decide to add a new signal.
 
-## 9. Next steps
+## 10. Next steps
 
 1. Collect real sessions on our own platform with all three self-report
    questionnaires (NASA-TLX, Borg CR10, KSS) plus a parallel ECG reading from
