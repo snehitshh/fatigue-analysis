@@ -1,5 +1,6 @@
-# Regenerable via download_*.py / parsers/*.py + models/*.py - don't bloat the repo.
+# Regenerable via download_*.py / parsers/*.py - don't bloat the repo (large, raw).
 data/raw_emg_mendeley/
-models/checkpoints/
 __pycache__/
 results/unknown_fields_log.csv
+# models/checkpoints/ is intentionally NOT ignored - the trained weights (~4.4MB)
+# are committed so they're available without re-running training.
