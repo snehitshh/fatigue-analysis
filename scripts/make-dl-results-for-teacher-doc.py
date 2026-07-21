@@ -37,8 +37,13 @@ def para(t, grey=False, bold=False):
     if grey: r.font.color.rgb = GREY; r.font.size = Pt(10)
 
 
-def bullet(t):
-    doc.add_paragraph(t, style="List Bullet")
+def bullet(t, desc=None):
+    p = doc.add_paragraph(style="List Bullet")
+    if desc is None:
+        p.add_run(t)
+    else:
+        r = p.add_run(t + " - "); r.bold = True; r.font.color.rgb = NAVY
+        p.add_run(desc)
 
 
 def add_table(rows):
@@ -114,17 +119,62 @@ bullet("Phase P1: a small PyTorch MLP per modality.")
 bullet("Validation: Leave-One-Subject-Out - a subject's data is never in both train and "
        "test, so results measure generalisation to a genuinely new person.")
 
-h1("5. Results")
-para("ECG (FatigueSet, 12 subjects)", bold=True)
-add_table([["Model", "MAE", "RMSE", "R2"],
-           ["Best classic: SVR (RBF)", "13.67", "16.49", "-4.18"],
-           ["MLP (P1, PyTorch)", "17.86", "21.41", "-1.76"]])
-para("EMG (Mendeley, 30 subjects)", bold=True)
-add_table([["Model", "MAE", "RMSE", "R2"],
-           ["Best classic: Random Forest", "0.274", "0.328", "0.212"],
-           ["MLP (P1, PyTorch)", "0.301", "0.352", "0.099"]])
+h1("5. Understanding the fatigue scale (what the predicted number means)")
+para("The model outputs a number on the scale of whichever dataset it was trained on - we do "
+     "not force one universal fatigue scale. Right now, since the model has only seen public "
+     "data, its output should be read against that data's own scale, not directly against our "
+     "own questionnaires:")
+bullet("ECG (FatigueSet) model", "outputs a number on a 0-100 continuous scale: 0 = no "
+       "fatigue at all, 100 = maximum fatigue, exactly as the original study's participants "
+       "self-rated their own physical fatigue.")
+bullet("EMG (Mendeley) model", "outputs a number on a 0-1 scale: 0 = the first, freshest "
+       "repetition in a 4-repetition set; 1 = the last, most fatigued repetition. A "
+       "simplified 3-level reading: 0-0.33 low, 0.33-0.67 moderate, 0.67-1 high.")
+bullet("Our own platform's questionnaires (separate from what the model predicts)", "KSS "
+       "1 (extremely alert) - 9 (extremely sleepy), at session start/end; Borg CR10 0 "
+       "(nothing at all) - 10 (maximal exertion), at all four questionnaire points; "
+       "NASA-TLX six sub-scales each 1-20, averaged for an overall workload score.")
+para("Important: the model's current output is NOT yet calibrated to our own KSS/Borg/"
+     "NASA-TLX scales, since it has never trained on our data. That calibration is exactly "
+     "what Phase P2 does - once fine-tuned on our own sessions, the model's number will map "
+     "onto our actual questionnaire scale.", bold=True)
 
-h1("6. Interpretation")
+h1("6. Results - all models compared, per modality")
+para("Every model evaluated, both phases together in one table, sorted by MAE (lower is "
+     "better). Same Leave-One-Subject-Out validation throughout, so every row is directly "
+     "comparable. The deep model (Phase P1) is marked.")
+para("ECG (FatigueSet, 12 subjects) - target: 0-100 fatigue rating", bold=True)
+add_table([
+    ["Model", "Phase", "MAE", "RMSE", "R2"],
+    ["SVR (RBF)", "P0 classic", "13.67", "16.49", "-4.18"],
+    ["Ridge", "P0 classic", "14.20", "16.64", "-4.42"],
+    ["Linear Regression", "P0 classic", "14.22", "16.67", "-4.45"],
+    ["XGBoost", "P0 classic", "14.90", "17.98", "-5.83"],
+    ["HistGradientBoosting", "P0 classic", "15.09", "18.07", "-5.34"],
+    ["KNN (k=5)", "P0 classic", "15.44", "18.53", "-4.27"],
+    ["Dummy (mean baseline)", "P0 classic", "15.45", "18.29", "-2.77"],
+    ["Random Forest", "P0 classic", "15.48", "18.14", "-7.57"],
+    ["MLP (PyTorch)", "P1 DEEP LEARNING", "17.86", "21.40", "-1.75"],
+])
+para("EMG (Mendeley, 30 subjects) - target: 0-1 fatigue proxy", bold=True)
+add_table([
+    ["Model", "Phase", "MAE", "RMSE", "R2"],
+    ["Random Forest", "P0 classic", "0.274", "0.328", "0.212"],
+    ["HistGradientBoosting", "P0 classic", "0.277", "0.334", "0.177"],
+    ["XGBoost", "P0 classic", "0.277", "0.338", "0.157"],
+    ["KNN (k=5)", "P0 classic", "0.290", "0.345", "0.119"],
+    ["Ridge", "P0 classic", "0.292", "0.344", "0.136"],
+    ["Linear Regression", "P0 classic", "0.292", "0.344", "0.136"],
+    ["SVR (RBF)", "P0 classic", "0.296", "0.364", "0.020"],
+    ["Dummy (mean baseline)", "P0 classic", "0.333", "0.373", "0.000"],
+    ["MLP (PyTorch)", "P1 DEEP LEARNING", "0.301", "0.352", "0.099"],
+])
+para("On ECG, the deep model ranks last of all 8 - the clearest illustration that a "
+     "from-scratch deep network needs more than 677 rows/12 subjects to compete with classic "
+     "methods. On EMG, it ranks 7th of 8 (ahead of only Dummy and SVR), closer to the pack "
+     "but still not the best choice at this sample size.", grey=True)
+
+h1("7. Interpretation")
 bullet("Classic ML currently beats the from-scratch deep model on both modalities - matches "
        "well-established findings on small tabular datasets; deep nets need more data before "
        "out-performing tree ensembles/kernel methods. Expected, not a failure.")
@@ -135,7 +185,12 @@ bullet("ECG does not generalise well yet: even the naive mean-predictor scores n
        "(which our own KSS/Borg/NASA-TLX baseline per participant provides) matters more than "
        "a better algorithm at 12 subjects.")
 
-h1("7. Also built")
+h1("8. Also built, and where the trained models are saved")
+para("The trained model weights (both PyTorch MLPs, their preprocessors, and both "
+     "IsolationForest quality-verification models) are saved in dl-model/models/checkpoints/ "
+     "and committed to the project repository (about 4.4 MB total) - not just produced "
+     "locally and discarded. Anyone with the repo has the actual trained models without "
+     "needing to re-run training.", bold=True)
 bullet("A data-quality verification model (unsupervised, per modality) that flags "
        "physiologically implausible readings - sanity-checked and working.")
 bullet("A local test console (web page) to type in the values our platform will collect and "
@@ -145,7 +200,7 @@ bullet("A local test console (web page) to type in the values our platform will 
 bullet("A fine-tune/continual-learning mechanism, self-tested, ready for Phase P2 once real "
        "sessions exist.")
 
-h1("8. Next steps")
+h1("9. Next steps")
 bullet("Collect real sessions with all three questionnaires plus a parallel ECG reading from "
        "a lab-grade device, tagged to the exact task block (now supported in the admin console).")
 bullet("Fine-tune the model on this combined dataset (Phase P2).")

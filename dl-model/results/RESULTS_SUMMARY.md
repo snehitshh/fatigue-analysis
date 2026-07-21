@@ -97,26 +97,75 @@ datasets (see roadmap §2 for the reasoning).
   subject's data is never in both train and test in the same fold, so results
   measure generalisation to a genuinely new person.
 
-## 6. Results
+## 6. Understanding the fatigue scale (what the predicted number means)
 
-**ECG (FatigueSet, 12 subjects)**
+The model outputs a number on the *scale of whichever dataset it was trained
+on* — we do not force one universal fatigue scale (see §4). Right now, since
+the model has only seen public data, its output should be read against that
+data's own scale, not directly against our own questionnaires:
 
-| Model | MAE | RMSE | R² |
-|---|---|---|---|
-| Best classic: SVR (RBF) | 13.67 | 16.49 | -4.18 |
-| MLP (P1, PyTorch) | 17.86 | 21.41 | -1.76 |
+- **ECG (FatigueSet) model** — outputs a number on a **0–100 continuous
+  scale**: 0 = no fatigue at all, 100 = maximum fatigue, exactly as the
+  original study's participants self-rated their own physical fatigue. A
+  prediction of e.g. 12 reads as low fatigue; 70 reads as high fatigue.
+- **EMG (Mendeley) model** — outputs a number on a **0–1 scale**: 0 =
+  the first, freshest repetition in a 4-repetition set; 1 = the last, most
+  fatigued repetition. We also derive a simplified 3-level reading from this:
+  0–0.33 = low, 0.33–0.67 = moderate, 0.67–1 = high.
+- **Our own platform's questionnaires** (a separate thing — these are what
+  *participants* report during our sessions, not what the model currently
+  predicts): **KSS** 1 (extremely alert) – 9 (extremely sleepy), captured at
+  the start and end of a session; **Borg CR10** 0 (nothing at all) – 10
+  (maximal exertion), captured at all four questionnaire points; **NASA-TLX**
+  six sub-scales each 1–20, averaged for an overall workload score.
 
-**EMG (Mendeley, 30 subjects)**
+**Important caveat**: the model's current output is not yet calibrated to our
+own KSS/Borg/NASA-TLX scales, because it has never been trained on our data.
+That calibration is exactly what Phase P2 does — once the model is fine-tuned
+on our own sessions, its predicted number will map onto our actual
+questionnaire scale, making "the model says X" directly comparable to "the
+participant said Y on the KSS."
 
-| Model | MAE | RMSE | R² |
-|---|---|---|---|
-| Best classic: Random Forest | 0.274 | 0.328 | **0.212** |
-| MLP (P1, PyTorch) | 0.301 | 0.352 | 0.099 |
+## 7. Results — all models compared, per modality
 
-Full per-model tables are in the accompanying `model_comparison_*_report.md`
-and `dl_model_*_report.md` files.
+Every model evaluated, both phases together in one table, sorted by MAE
+(lower is better). Same Leave-One-Subject-Out validation throughout, so every
+row is directly comparable. The deep model (Phase P1) is marked.
 
-## 7. Interpretation
+**ECG (FatigueSet, 12 subjects) — target: 0–100 fatigue rating**
+
+| Model | Phase | MAE | RMSE | R² |
+|---|---|---|---|---|
+| SVR (RBF) | P0 classic | 13.67 | 16.49 | -4.18 |
+| Ridge | P0 classic | 14.20 | 16.64 | -4.42 |
+| Linear Regression | P0 classic | 14.22 | 16.67 | -4.45 |
+| XGBoost | P0 classic | 14.90 | 17.98 | -5.83 |
+| HistGradientBoosting | P0 classic | 15.09 | 18.07 | -5.34 |
+| KNN (k=5) | P0 classic | 15.44 | 18.53 | -4.27 |
+| Dummy (mean baseline) | P0 classic | 15.45 | 18.29 | -2.77 |
+| Random Forest | P0 classic | 15.48 | 18.14 | -7.57 |
+| **MLP (PyTorch)** | **P1 deep learning** | **17.86** | **21.40** | **-1.75** |
+
+**EMG (Mendeley, 30 subjects) — target: 0–1 fatigue proxy**
+
+| Model | Phase | MAE | RMSE | R² |
+|---|---|---|---|---|
+| Random Forest | P0 classic | 0.274 | 0.328 | 0.212 |
+| HistGradientBoosting | P0 classic | 0.277 | 0.334 | 0.177 |
+| XGBoost | P0 classic | 0.277 | 0.338 | 0.157 |
+| KNN (k=5) | P0 classic | 0.290 | 0.345 | 0.119 |
+| Ridge | P0 classic | 0.292 | 0.344 | 0.136 |
+| Linear Regression | P0 classic | 0.292 | 0.344 | 0.136 |
+| SVR (RBF) | P0 classic | 0.296 | 0.364 | 0.020 |
+| Dummy (mean baseline) | P0 classic | 0.333 | 0.373 | 0.000 |
+| **MLP (PyTorch)** | **P1 deep learning** | **0.301** | **0.352** | **0.099** |
+
+On ECG, the deep model ranks last of all 8 — the clearest illustration that a
+from-scratch deep network needs more than 677 rows/12 subjects to compete with
+classic methods. On EMG, it ranks 7th of 8 (ahead of only Dummy and SVR),
+closer to the pack but still not the best choice at this sample size.
+
+## 8. Interpretation
 
 - **Classic ML currently beats the from-scratch deep model on both
   modalities.** This matches well-established findings on small tabular
@@ -133,7 +182,7 @@ and `dl_model_*_report.md` files.
   participant, via the KSS/Borg/NASA-TLX questionnaires at the start of each
   session) matters more than further tuning the current model.
 
-## 8. Also built: the data-quality verification model
+## 9. Also built: the data-quality verification model
 
 A separate, unsupervised model (IsolationForest, one per modality) scores
 whether a new incoming reading looks physiologically plausible — e.g. it
@@ -142,16 +191,22 @@ normal one (heart rate of 75 bpm). This is the mechanism intended to catch bad
 electrode contact, motion artefact, or sensor faults live during our own data
 collection, rather than discovering the problem during analysis.
 
-## 9. A local test console
+## 10. A local test console, and where the trained models are saved
+
+The trained model weights (both PyTorch MLPs, their preprocessors, and both
+IsolationForest quality-verification models) are saved in
+`dl-model/models/checkpoints/` and committed to the project repository (about
+4.4 MB total) — not just produced locally and discarded. Anyone with the repo
+has the actual trained models without needing to re-run training.
 
 A small internal tool (Flask API + a plain HTML page, `dl-model/api.py` +
-`dl-model/frontend/index.html`) lets us type in the same values our platform
-will collect and see the model's prediction and the data-quality verdict, per
-modality. It also captures any field the model hasn't been trained on yet
-(instead of silently ignoring it), so there is real data to work with once we
-decide to add a new signal.
+`dl-model/frontend/index.html`) loads these checkpoints and lets us type in
+the same values our platform will collect and see the model's live prediction
+and the data-quality verdict, per modality. It also captures any field the
+model hasn't been trained on yet (instead of silently ignoring it), so there
+is real data to work with once we decide to add a new signal.
 
-## 10. Next steps
+## 11. Next steps
 
 1. Collect real sessions on our own platform with all three self-report
    questionnaires (NASA-TLX, Borg CR10, KSS) plus a parallel ECG reading from
