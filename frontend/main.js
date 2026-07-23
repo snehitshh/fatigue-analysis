@@ -1,11 +1,10 @@
 // Global Configuration
 const TOTAL_BLOCKS = 3;
-const BREAK_DURATION = 120; // 2 minutes
 const PHYSICAL_FATIGUE_DURATION = 720; // 12 minutes (synced with cognitive)
 
 // Steps that are part of the actual test — these get a plain white background;
 // every other (setup/landing/complete) screen shows the light-blue wave theme.
-const TEST_STEPS = new Set(['kss-pre', 'fitts', 'typing', 'nasatlx', 'borg', 'cognitive', 'physical', 'safety', 'kss-post', 'break']);
+const TEST_STEPS = new Set(['kss-pre', 'fitts', 'typing', 'nasatlx', 'borg', 'scroll', 'cognitive', 'physical', 'safety', 'kss-post', 'break']);
 
 let currentStep = 'demographics'; 
 let currentBlock = 1;
@@ -214,6 +213,10 @@ async function ensureBackendParticipant(data = sessionData.demographics) {
 
     backendState.participantPromise = (async () => {
         const participantId = createBackendId();
+        // Contact info (email/fullName/phone) belongs only in participant_contacts
+        // (admin-only RLS). participants.metadata is readable by any approved
+        // researcher/viewer role, so PII must never be copied into it.
+        const { email, fullName, phone, ...safeDemographics } = data;
         const result = await api.createParticipant({
             id: participantId,
             participant_code: String(data.participantId || getParticipantCode()).trim(),
@@ -224,7 +227,7 @@ async function ensureBackendParticipant(data = sessionData.demographics) {
             eye_correction: data.eyeCorrection || null,
             metadata: {
                 source: 'browser',
-                rawDemographics: data,
+                rawDemographics: safeDemographics,
                 consent: consentData,
                 safetyScreening: safetyScreeningData,
                 device: getDeviceInfo()
@@ -602,6 +605,36 @@ async function saveBackendCognitiveTrial(data) {
     }
 }
 
+async function saveBackendSartTrial(data) {
+    const api = getBackendApi();
+    if (!api || !api.isSupabaseConfigured) return;
+
+    const blockNumber = data.blockNumber || currentBlock;
+    const sessionId = await ensureBackendSession();
+    const blockId = await ensureBackendBlock(blockNumber);
+    if (!sessionId || !blockId) return;
+
+    const trialNumber = toNullableInt(data.trialNumber) || 1;
+    const result = await api.saveSartTrial({
+        session_id: sessionId,
+        block_id: blockId,
+        block_number: blockNumber,
+        trial_number: trialNumber,
+        digit: toNullableInt(data.digit),
+        is_target: Boolean(data.isTarget),
+        responded: Boolean(data.responded),
+        correct: Boolean(data.correct),
+        reaction_time_ms: toNullableNumber(data.reactionTimeMs),
+        elapsed_time_in_block_ms: toNullableInt(data.elapsedTimeInBlockMs),
+        input_method: sessionData.demographics.inputDevice || null,
+        ...getRecordIdentity('sart', blockNumber, trialNumber)
+    });
+
+    if (result.error) {
+        logBackendError('saveSartTrial', result.error);
+    }
+}
+
 async function saveBackendEngagementSummary(data) {
     const api = getBackendApi();
     if (!api || !api.isSupabaseConfigured) return;
@@ -639,6 +672,7 @@ window.fatigueBackend = {
     saveFittsTrial: saveBackendFittsTrial,
     saveTypingTrial: saveBackendTypingTrial,
     saveCognitiveTrial: saveBackendCognitiveTrial,
+    saveSartTrial: saveBackendSartTrial,
     saveEngagementSummary: saveBackendEngagementSummary,
     recordEngagementEvent: (eventType, payload) => recordBackendEvent(eventType, payload)
 };
@@ -741,6 +775,7 @@ function stepDisplayName(step) {
         'fitts': 'Fitts Tapping Test',
         'typing': 'Typing Test',
         'nasatlx': 'NASA-TLX Assessment',
+        'scroll': 'Scrolling Attention Test',
         'break': 'Rest Period',
         'safety': 'Safety Check',
         'cognitive': 'Cognitive Battery',
@@ -770,6 +805,7 @@ function routeToStep(step) {
             runQuestionnaires(snapBlockOrCurrent(), 'post_block', snapBlockOrCurrent() === TOTAL_BLOCKS, () => afterBaseQuestionnaires(snapBlockOrCurrent())); break;
         case 'fitts': showFittsTest(); break;
         case 'typing': showTypingTest(); break;
+        case 'scroll': showScrollTest(snapBlockOrCurrent(), () => continueAfterBlock(snapBlockOrCurrent())); break;
         case 'break': runFatigueRound(snapBlockOrCurrent()); break;
         case 'safety': showSafetyScreening(); break;
         case 'cognitive': showCognitiveTest(); break;
@@ -998,8 +1034,8 @@ function currentPhaseIndex() {
 // before the blocks read 0%; the finished screen reads 100%.
 function completionPercent() {
     if (currentStep === 'complete') return 100;
-    const STEPS_PER_BLOCK = 5;
-    const stepInBlock = { 'kss-pre': 0, fitts: 1, typing: 1, nasatlx: 2, borg: 2, cognitive: 3, physical: 3, safety: 3, 'kss-post': 4 };
+    const STEPS_PER_BLOCK = 6;
+    const stepInBlock = { 'kss-pre': 0, fitts: 1, typing: 1, nasatlx: 2, borg: 2, scroll: 3, cognitive: 4, physical: 4, safety: 4, 'kss-post': 5 };
     const block = Math.min(Math.max(currentBlock || 1, 1), TOTAL_BLOCKS);
     if (currentStep === 'break') {
         return Math.round((Math.min(block, TOTAL_BLOCKS) / TOTAL_BLOCKS) * 100);
@@ -1443,43 +1479,6 @@ function storeKssRating(rating) {
     persistSession();
 }
 
-function showPreBlockRating(blockNum) {
-    currentBlock = Math.min(Math.max(Number(blockNum) || 1, 1), TOTAL_BLOCKS);
-    if (kssRatings.some((item) => item.blockNumber === currentBlock && item.stage === 'pre_block')) {
-        startBlock(currentBlock);
-        return;
-    }
-    currentStep = 'kss-pre';
-    updateProgress();
-    if (typeof mountFatigueScale !== 'function') {
-        mainContent.innerHTML = '<div class="card-screen"><div class="block-title">Alertness scale unavailable</div><p>The block cannot start because a required research measure did not load.</p></div>';
-        return;
-    }
-    mountFatigueScale(mainContent, { stage: 'pre_block', blockNumber: currentBlock }, async (rating) => {
-        storeKssRating(rating);
-        await saveBackendFatigueRating(rating);
-        startBlock(currentBlock);
-    });
-}
-
-function showPostBlockRating() {
-    if (kssRatings.some((item) => item.blockNumber === currentBlock && item.stage === 'post_block')) {
-        finishBlock();
-        return;
-    }
-    currentStep = 'kss-post';
-    updateProgress();
-    if (typeof mountFatigueScale !== 'function') {
-        mainContent.innerHTML = '<div class="card-screen"><div class="block-title">Alertness scale unavailable</div><p>The block cannot be finalized because a required research measure did not load.</p></div>';
-        return;
-    }
-    mountFatigueScale(mainContent, { stage: 'post_block', blockNumber: currentBlock }, async (rating) => {
-        storeKssRating(rating);
-        await saveBackendFatigueRating(rating);
-        finishBlock();
-    });
-}
-
 // --- SPARC protocol driver ---------------------------------------------------
 // baseline Q -> base -> Q -> fatigue -> base -> Q -> fatigue -> base -> Q
 // 3 base rounds, 2 fatigue rounds. Each Q = NASA-TLX + Borg CR10 + KSS (all 3 kept).
@@ -1501,6 +1500,13 @@ function startBaseRound(n) {
 }
 
 function afterBaseQuestionnaires(n) {
+    showScrollTest(n, () => continueAfterBlock(n));
+}
+
+// Universal step: runs after every block's questionnaire, before the block's
+// fatigue round (or completion, on the last block) - same for cognitive and
+// physical tracks alike.
+function continueAfterBlock(n) {
     if (n < TOTAL_BLOCKS) runFatigueRound(n);
     else showCompletion();
 }
@@ -1547,37 +1553,6 @@ function runQuestionnaires(blockNumber, stage, includeKss, next) {
     }, blockNumber, pid);
 }
 
-// 3. Block Initialization
-function startBlock(blockNum) {
-    if (blockNum > TOTAL_BLOCKS) {
-        showCompletion();
-        return;
-    }
-
-    // Note: the experiment intentionally does NOT force fullscreen. Browsers exit
-    // fullscreen on Escape and that cannot be blocked, which made pressing Escape
-    // look like the study had ended. Running in-tab keeps the flow consistent, and
-    // the explicit Withdraw button remains the only way to leave the study early.
-
-    currentBlock = blockNum;
-    
-    sessionData.blocks[currentBlock - 1] = {
-        ...(sessionData.blocks[currentBlock - 1] || {}),
-        blockNumber: currentBlock,
-        startTime: new Date().toISOString(),
-        fatigueType: sessionFatigueTrack,
-        baseTaskType: sessionBaseTask
-    };
-    ensureBackendBlock(currentBlock);
-    
-    // Route to the chosen primary task
-    if (sessionBaseTask === 'fitts') {
-        showFittsTest();
-    } else {
-        showTypingTest();
-    }
-}
-
 // 4A. Fitts Route
 function showFittsTest() {
     currentStep = 'fitts';
@@ -1622,97 +1597,6 @@ function showTypingTest() {
             persistSession();
         }
     });
-}
-
-// 5. NASA-TLX
-// 5. NASA-TLX
-function showNASATLX() {
-    currentStep = 'nasatlx';
-    updateProgress();
-    
-    // Grab the ID before passing it to the test
-    const pid = sessionData.demographics.participantId || "UNKNOWN";
-    
-    window.fatigueEngagement?.startTest({ blockNumber: currentBlock, step: 'nasatlx' });
-
-    // Pass currentBlock and pid as the 3rd and 4th arguments
-    mountNASATLX(mainContent, (data) => {
-        window.fatigueEngagement?.endTest();
-        sessionData.blocks[currentBlock - 1].nasatlxData = data;
-        saveBackendNasaTlxResponse(data, currentBlock);
-        showBorg();
-    }, currentBlock, pid);
-}
-
-// 5b. Borg CR10 (compulsory alongside NASA-TLX)
-function showBorg() {
-    currentStep = 'borg';
-    updateProgress();
-    if (typeof mountBorgScale !== 'function') { showBreak(); return; }
-    window.fatigueEngagement?.startTest({ blockNumber: currentBlock, step: 'borg' });
-    mountBorgScale(mainContent, { stage: 'post_block', blockNumber: currentBlock }, async (rating) => {
-        window.fatigueEngagement?.endTest();
-        (sessionData.blocks[currentBlock - 1] ||= {}).borgData = rating;
-        await saveBackendBorgRating(rating);
-        showBreak();
-    });
-}
-
-// 6. Break Period
-function showBreak() {
-    currentStep = 'break';
-    updateProgress();
-    let timeRemaining = BREAK_DURATION;
-    
-    const renderBreak = () => {
-        const mins = Math.floor(timeRemaining / 60);
-        const secs = timeRemaining % 60;
-        const nextTask = sessionFatigueTrack === 'cognitive' ? 'Cognitive Battery' : 'Physical Exercise';
-        mainContent.innerHTML = `
-            <div class="checkpoint-screen screen-enter">
-                <div class="checkpoint-kicker">Checkpoint Hold</div>
-                <div class="checkpoint-timer">${mins}:${secs.toString().padStart(2, '0')}</div>
-                <h3>Rest window active</h3>
-                <p class="checkpoint-copy">Next up: ${nextTask}. This timed pause keeps the protocol consistent between stages.</p>
-                <div class="checkpoint-actions">
-                    <button class="button secondary" onclick="skipBreak()">Skip Rest Window</button>
-                </div>
-            </div>`;
-    };
-
-    let advanced = false;
-    const advance = () => {
-        if (advanced) return;
-        advanced = true;
-        clearInterval(interval);
-        proceedToFatigueTest();
-    };
-
-    const interval = setInterval(() => {
-        timeRemaining--;
-        if (timeRemaining <= 0) {
-            advance();
-        } else renderBreak();
-    }, 1000);
-
-    // Confirm before skipping (the rest period standardizes fatigue between tasks).
-    window.skipBreak = () => {
-        showConfirmModal({
-            title: 'Skip the rest break?',
-            message: 'The rest period helps standardize fatigue between tasks. Your choice to skip is recorded.',
-            confirmLabel: 'Skip Break',
-            cancelLabel: 'Keep Resting',
-            onConfirm: () => {
-                if (advanced) return;
-                recordBackendEvent('break_skipped', {
-                    blockNumber: currentBlock,
-                    remainingSeconds: timeRemaining
-                });
-                advance();
-            }
-        });
-    };
-    renderBreak();
 }
 
 // 7. Automatic Fatigue Routing
@@ -1762,6 +1646,21 @@ function showSafetyScreening() {
         });
         showCognitiveTest();
     });
+}
+
+// Universal scrolling attention test (SART) - runs once per block, for every
+// session, independent of the cognitive/physical fatigue track.
+function showScrollTest(blockNum, next) {
+    currentStep = 'scroll';
+    currentBlock = blockNum;
+    updateProgress();
+    const pid = sessionData.demographics.participantId || 'UNKNOWN';
+    window.fatigueEngagement?.startTest({ blockNumber: blockNum, step: 'scroll' });
+    mountScrollTest(mainContent, (summary) => {
+        window.fatigueEngagement?.endTest();
+        sessionData.blocks[blockNum - 1].scrollData = summary;
+        next();
+    }, blockNum, pid, { protocolSeed });
 }
 
 // 8A. Cognitive Test
@@ -1910,26 +1809,12 @@ function showPhysicalFatigueTest() {
             completedFullDuration
         });
         saveBackendPhysicalFatigueLog(fatigueLog);
-        showPostBlockRating();
+        // Matches the cognitive track: no extra KSS here (KSS is start/end only,
+        // already handled by runQuestionnaires). Go straight to the next block.
+        startBaseRound(currentBlock + 1);
     };
-    
-    updateDisplay();
-}
 
-// 9. Finish Block
-function finishBlock() {
-    if (currentBlock < TOTAL_BLOCKS) {
-        mainContent.innerHTML = `
-        <div class="checkpoint-screen checkpoint-complete card-screen screen-enter">
-                <div class="checkpoint-kicker">Block recorded</div>
-                <div class="completion-badge">OK</div>
-                <h3>Block ${currentBlock} Complete</h3>
-                <p class="checkpoint-copy">${currentBlock} of ${TOTAL_BLOCKS} blocks recorded. Take a moment, then continue when ready.</p>
-                <button class="button primary" onclick="showPreBlockRating(${currentBlock + 1})">Continue to Block ${currentBlock + 1}</button>
-            </div>`;
-    } else {
-        showCompletion();
-    }
+    updateDisplay();
 }
 
 // Builds the per-block results table shown on the completion screen.

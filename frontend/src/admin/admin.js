@@ -24,6 +24,7 @@ const EXPORTS = [
     ["research_fatigue_ratings_export", "fatigue_ratings"],
     ["research_borg_ratings_export", "borg_ratings"],
     ["research_cognitive_export", "cognitive_trials"],
+    ["research_sart_export", "sart_trials"],
     ["research_physical_export", "physical_fatigue"],
     ["research_engagement_export", "engagement"],
     ["research_manual_measurements_export", "manual_measurements"],
@@ -39,6 +40,7 @@ const TEST_VIEWS = {
     fitts: { label: "Fitts' Law", view: "research_fitts_export", file: "fitts_trials", desc: "Pointing trials — target width/distance, movement time, error rate, throughput." },
     typing: { label: "Typing", view: "research_typing_export", file: "typing_trials", desc: "Transcription trials — speed (WPM/CPM), accuracy, inter-key intervals." },
     cognitive: { label: "Cognitive (Stroop / AX-CPT)", view: "research_cognitive_export", file: "cognitive_trials", desc: "Reaction-time and accuracy on congruent/incongruent and cue/probe trials." },
+    sart: { label: "Scrolling Attention (SART)", view: "research_sart_export", file: "sart_trials", desc: "Go/no-go digit trials - reaction time, omission/commission errors. Universal, once per block." },
     nasa: { label: "NASA-TLX", view: "research_nasa_tlx_export", file: "nasa_tlx", desc: "Subjective workload — mental, physical, temporal, performance, effort, frustration." },
     fatigue: { label: "Fatigue (KSS)", view: "research_fatigue_ratings_export", file: "fatigue_ratings", desc: "Karolinska Sleepiness Scale ratings captured pre/post each block." },
     borg: { label: "Exertion (Borg CR10)", view: "research_borg_ratings_export", file: "borg_ratings", desc: "Borg CR10 perceived-exertion ratings (0-10), captured with NASA-TLX." },
@@ -80,7 +82,7 @@ const esc = (v) => String(v == null ? "" : v).replace(/[&<>"']/g, (c) => (
 const fmtDate = (s) => (s ? new Date(s).toLocaleString() : "—");
 const fmtMs = (ms) => (ms == null ? "—" : (ms >= 1000 ? (ms / 1000).toFixed(1) + "s" : ms + "ms"));
 const pct = (n) => (n == null ? "—" : n + "%");
-const stepName = (s) => ({ fitts: "Fitts", typing: "Typing", nasatlx: "NASA-TLX", cognitive: "Cognitive", physical: "Physical" }[s] || s || "—");
+const stepName = (s) => ({ fitts: "Fitts", typing: "Typing", nasatlx: "NASA-TLX", scroll: "Scrolling (SART)", cognitive: "Cognitive", physical: "Physical" }[s] || s || "—");
 const countBy = (arr, k) => (arr || []).reduce((a, x) => { a[x[k]] = (a[x[k]] || 0) + 1; return a; }, {});
 const errorCard = (title, msg) => `<div class="card"><h1>${esc(title)}</h1><p class="error">${esc(msg)}</p></div>`;
 const view = () => document.getElementById("view");
