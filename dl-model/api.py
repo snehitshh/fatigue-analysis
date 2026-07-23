@@ -4,14 +4,17 @@ same feature values our data collection captures and see what the model says.
 
 Serves:
   GET  /api/modalities            -> field list + realistic ranges/categories per modality
-  POST /api/predict                -> { modality, features:{...} } -> MLP fatigue
-                                       prediction + data-quality verification
+  POST /api/predict                -> { modality, features:{...} } -> fatigue
+                                       prediction (best classic-ML model per
+                                       modality, not the MLP - see
+                                       models/train_best_classic.py) + data-quality
+                                       verification
 
 Run:
     python dl-model/api.py
 Then open dl-model/frontend/index.html in a browser (it calls http://127.0.0.1:5001).
 
-Requires the models to already be trained (python models/train_dl.py and
+Requires the models to already be trained (python models/train_best_classic.py and
 python models/verify_data_quality.py) - see dl-model/README.md.
 """
 import sys
@@ -20,7 +23,6 @@ from pathlib import Path
 import joblib
 import numpy as np
 import pandas as pd
-import torch
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
@@ -28,7 +30,6 @@ HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE / "models"))
 from modality_config import MODALITIES
-from models.train_dl import FatigueMLP
 from models.verify_data_quality import CKPT_DIR as QUALITY_CKPT_DIR
 
 CKPT_DIR = HERE / "models" / "checkpoints"
@@ -67,13 +68,13 @@ def list_modalities():
     ])
 
 
-def load_mlp(modality: str):
-    ckpt = torch.load(CKPT_DIR / f"{modality}.pt", weights_only=False)
-    model = FatigueMLP(in_dim=ckpt["in_dim"])
-    model.load_state_dict(ckpt["state_dict"])
-    model.eval()
-    pre_bundle = joblib.load(CKPT_DIR / f"{modality}_preprocessor.joblib")
-    return model, pre_bundle["preprocessor"], pre_bundle["numeric_features"], pre_bundle["categorical_features"]
+def load_best_classic(modality: str):
+    """The model actually served: the best classic-ML performer per modality
+    (see models/train_best_classic.py + DL_MEETING_NOTES.md) - it beat the MLP
+    on both modalities at this sample size. The MLP checkpoint (.pt) stays on
+    disk for comparison but is not used for live predictions."""
+    bundle = joblib.load(CKPT_DIR / f"{modality}_best.joblib")
+    return bundle["pipeline"], bundle["numeric_features"], bundle["categorical_features"], bundle["model_name"]
 
 
 def load_quality(modality: str):
@@ -108,15 +109,13 @@ def predict():
         return jsonify({"error": f"unknown modality '{modality}'"}), 400
 
     try:
-        model, pre, numeric_features, categorical_features = load_mlp(modality)
+        pipe, numeric_features, categorical_features, model_name = load_best_classic(modality)
     except FileNotFoundError:
-        return jsonify({"error": "Model not trained yet - run: python models/train_dl.py"}), 503
+        return jsonify({"error": "Model not trained yet - run: python models/train_best_classic.py"}), 503
 
     cols = numeric_features + categorical_features
     row = pd.DataFrame([{c: features.get(c) for c in cols}])
-    X = pre.transform(row)
-    with torch.no_grad():
-        pred = float(model(torch.tensor(X, dtype=torch.float32)).item())
+    pred = float(pipe.predict(row)[0])
 
     # Any submitted field the model was NOT trained on can't affect this
     # prediction, but capture it so there's real data to retrain on once it's
@@ -124,7 +123,7 @@ def predict():
     unknown = {k: v for k, v in features.items() if k not in cols}
     log_unknown_fields(modality, unknown)
 
-    result = {"modality": modality, "fatigue_prediction": round(pred, 4),
+    result = {"modality": modality, "model": model_name, "fatigue_prediction": round(pred, 4),
               "label_desc": MODALITIES[modality]["label_desc"],
               "unknown_fields_logged": list(unknown.keys())}
 

@@ -1,14 +1,17 @@
 // Scrolling Attention Test (SART) - Sustained Attention to Response Task,
 // presented as a continuous scrolling stream of digits. Universal step: runs
-// once per block, after that block's questionnaire, regardless of which
-// fatigue track (cognitive/physical) the session is on.
+// 4 times per session - once before block 1 starts ("Start"), then once
+// after each block's questionnaire ("Block 1" / "Block 2" / "Block 3" = End) -
+// regardless of which fatigue track (cognitive/physical) the session is on.
 //
 // Classic SART timing: digit visible ~250ms, fixed ~1150ms cycle per trial.
 // Respond (tap/space) to every digit except the no-go digit (3); withhold on 3.
 function mountScrollTest(container, onComplete, blockIdx, participantId, options) {
     const research = window.fatigueResearch || {};
+    const stage = (options && options.stage) || 'post_block';
+    const label = (options && options.label) || `Block ${blockIdx || 1}`;
     const random = research.seededRandom && options && options.protocolSeed
-        ? research.seededRandom(research.deriveSeed(options.protocolSeed, `scroll-block-${blockIdx || 1}`))
+        ? research.seededRandom(research.deriveSeed(options.protocolSeed, `scroll-${stage}-${blockIdx || 1}`))
         : Math.random;
 
     const DIGITS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
@@ -50,7 +53,7 @@ function mountScrollTest(container, onComplete, blockIdx, participantId, options
     function showInstructions() {
         container.innerHTML = `
             <div class="scroll-test-container">
-                <h2 class="block-title">Scrolling Attention Test</h2>
+                <h2 class="block-title">Scrolling Attention Test - ${label}</h2>
                 <p>Numbers will scroll past continuously. Tap the button below for every number -
                    <strong>except when you see "${NO_GO_DIGIT}"</strong>. Skip the tap only for "${NO_GO_DIGIT}".</p>
                 <p><strong>A short practice round comes first.</strong></p>
@@ -68,6 +71,7 @@ function mountScrollTest(container, onComplete, blockIdx, participantId, options
         const badge = phase === 'practice' ? '<div class="practice-badge">PRACTICE MODE (NOT SCORED)</div>' : '';
         container.innerHTML = `
             <div class="scroll-test-container">
+                <h3>Scroll Test - ${label}</h3>
                 ${badge}
                 <div class="scroll-progbar-outer"><div id="scroll-prog-bar"></div></div>
                 <div class="scroll-stream" id="scroll-stream"></div>
@@ -120,6 +124,7 @@ function mountScrollTest(container, onComplete, blockIdx, participantId, options
         const correct = isTarget ? !responded : responded;
         const record = {
             blockNumber: blockIdx || 1,
+            stage,
             trialNumber: trialResults.length + 1,
             digit,
             isTarget,
@@ -153,6 +158,8 @@ function mountScrollTest(container, onComplete, blockIdx, participantId, options
 
         const summary = {
             blockNumber: blockIdx || 1,
+            stage,
+            label,
             totalTrials: total,
             targetTrials: targets.length,
             commissionErrors,

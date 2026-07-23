@@ -8,6 +8,21 @@ Two working fatigue-prediction models — one per modality (ECG, EMG) — plus a
 data-quality checker and a local test console. Trained on **public datasets**,
 not our own collected data yet (we have ~zero real sessions so far).
 
+**Final model actually in use (this is the one to say in the meeting):**
+
+| Modality | Final model | Why |
+|---|---|---|
+| ECG | **SVR (RBF)** | Best LOSO-CV score of all 9 models tested (MAE 13.67) |
+| EMG | **Random Forest** | Best LOSO-CV score of all 9 models tested (MAE 0.274, only model with a real positive R²) |
+
+Not the MLP — it scored worse than classic ML on both modalities (see
+scores below). `dl-model/api.py` now actually loads and serves these two
+models (`models/train_best_classic.py` fits each on all subjects and saves
+it); the MLP checkpoint stays on disk for comparison only, it isn't served.
+Going forward (Phase P2), when our own data comes in, these are the models
+that get retrained/refit on the combined dataset — a classic model doesn't
+need a special "fine-tune" mechanism, it's just refit on the bigger dataset.
+
 ## 2. Datasets
 
 | Modality | Dataset | Subjects | Windows | Label |
@@ -101,13 +116,15 @@ exactly what our own per-participant KSS/Borg/NASA-TLX baseline is for.
 
 ## 6. Where things are saved
 
-- Trained weights: `dl-model/models/checkpoints/` (~4.4 MB, committed to the
-  repo — not just produced locally and discarded).
+- Trained weights: `dl-model/models/checkpoints/` — includes the served
+  models (`ecg_fatigueset_best.joblib`, `emg_mendeley_best.joblib`) plus the
+  MLP checkpoints kept for comparison.
 - Full write-up: `dl-model/results/RESULTS_SUMMARY.md`.
 
 ## 7. Next step (Phase P2)
 
-Fine-tune on our own collected sessions once real data exists (NASA-TLX +
-Borg + KSS + parallel ECG, tagged to the exact task block) — this is the step
-that actually answers the research question: does software interaction alone
+Retrain/refit the served model (SVR for ECG, Random Forest for EMG) on our
+own collected sessions once real data exists (NASA-TLX + Borg + KSS +
+parallel ECG, tagged to the exact task block) — this is the step that
+actually answers the research question: does software interaction alone
 track fatigue that an independent ECG reading also confirms.

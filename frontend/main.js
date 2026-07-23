@@ -615,10 +615,12 @@ async function saveBackendSartTrial(data) {
     if (!sessionId || !blockId) return;
 
     const trialNumber = toNullableInt(data.trialNumber) || 1;
+    const stage = data.stage || 'post_block';
     const result = await api.saveSartTrial({
         session_id: sessionId,
         block_id: blockId,
         block_number: blockNumber,
+        stage,
         trial_number: trialNumber,
         digit: toNullableInt(data.digit),
         is_target: Boolean(data.isTarget),
@@ -627,7 +629,7 @@ async function saveBackendSartTrial(data) {
         reaction_time_ms: toNullableNumber(data.reactionTimeMs),
         elapsed_time_in_block_ms: toNullableInt(data.elapsedTimeInBlockMs),
         input_method: sessionData.demographics.inputDevice || null,
-        ...getRecordIdentity('sart', blockNumber, trialNumber)
+        ...getRecordIdentity(`sart_${stage}`, blockNumber, trialNumber)
     });
 
     if (result.error) {
@@ -805,7 +807,15 @@ function routeToStep(step) {
             runQuestionnaires(snapBlockOrCurrent(), 'post_block', snapBlockOrCurrent() === TOTAL_BLOCKS, () => afterBaseQuestionnaires(snapBlockOrCurrent())); break;
         case 'fitts': showFittsTest(); break;
         case 'typing': showTypingTest(); break;
-        case 'scroll': showScrollTest(snapBlockOrCurrent(), () => continueAfterBlock(snapBlockOrCurrent())); break;
+        case 'scroll':
+            // Disambiguate: if block 1's base task hasn't run yet, the resumed
+            // scroll test must be the pre_session one; otherwise it's post_block.
+            if (!sessionData.blocks[0] || !sessionData.blocks[0].primaryData) {
+                showScrollTest(1, () => startBaseRound(1), 'pre_session');
+            } else {
+                showScrollTest(snapBlockOrCurrent(), () => continueAfterBlock(snapBlockOrCurrent()));
+            }
+            break;
         case 'break': runFatigueRound(snapBlockOrCurrent()); break;
         case 'safety': showSafetyScreening(); break;
         case 'cognitive': showCognitiveTest(); break;
@@ -1480,11 +1490,14 @@ function storeKssRating(rating) {
 }
 
 // --- SPARC protocol driver ---------------------------------------------------
-// baseline Q -> base -> Q -> fatigue -> base -> Q -> fatigue -> base -> Q
-// 3 base rounds, 2 fatigue rounds. Each Q = NASA-TLX + Borg CR10 + KSS (all 3 kept).
+// baseline Q -> scroll(start) -> base -> Q -> fatigue -> base -> Q -> fatigue -> base -> Q -> scroll(end, folded into block 3's)
+// 3 base rounds, 2 fatigue rounds, 4 scroll tests (start + one per block).
+// Each Q = NASA-TLX + Borg CR10 + KSS (all 3 kept).
 // ponytail: baseline questionnaires use block 0 (no experiment_block, null block_id).
 function startProtocol() {
-    runQuestionnaires(0, 'pre_block', true, () => startBaseRound(1)); // KSS at start
+    runQuestionnaires(0, 'pre_block', true, () => { // KSS at start
+        showScrollTest(1, () => startBaseRound(1), 'pre_session');
+    });
 }
 
 function startBaseRound(n) {
@@ -1650,17 +1663,23 @@ function showSafetyScreening() {
 
 // Universal scrolling attention test (SART) - runs once per block, for every
 // session, independent of the cognitive/physical fatigue track.
-function showScrollTest(blockNum, next) {
+// 4 scroll tests per session: 'pre_session' once before block 1 starts
+// (label "Start"), then 'post_block' once per block (label "Block N", or
+// "End" on the last block).
+function showScrollTest(blockNum, next, stage = 'post_block') {
     currentStep = 'scroll';
     currentBlock = blockNum;
     updateProgress();
     const pid = sessionData.demographics.participantId || 'UNKNOWN';
+    const label = stage === 'pre_session' ? 'Start' : (blockNum === TOTAL_BLOCKS ? 'End' : `Block ${blockNum}`);
     window.fatigueEngagement?.startTest({ blockNumber: blockNum, step: 'scroll' });
     mountScrollTest(mainContent, (summary) => {
         window.fatigueEngagement?.endTest();
-        sessionData.blocks[blockNum - 1].scrollData = summary;
+        const block = (sessionData.blocks[blockNum - 1] ||= {});
+        if (stage === 'pre_session') block.scrollDataStart = summary;
+        else block.scrollData = summary;
         next();
-    }, blockNum, pid, { protocolSeed });
+    }, blockNum, pid, { protocolSeed, stage, label });
 }
 
 // 8A. Cognitive Test
