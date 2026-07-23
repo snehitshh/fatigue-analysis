@@ -105,7 +105,7 @@ frontend/
   engagementMonitor.js    per-test app-switch + attention aggregation
   corpus.txt              typing sentences
   style.css               design system + dark-glass theme
-  lab-bg.png              animated backdrop photo
+  lab-bg.webp             animated backdrop photo
   src/lib/                supabaseClient, experimentApi, recordIdentity,
                           attentionTracker (camera ML), calibration
   src/admin/              admin.js + measurement.js + slots.js

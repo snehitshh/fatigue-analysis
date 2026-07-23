@@ -2107,7 +2107,7 @@ body {
 .bg-aurora, .bg-hex, .bg-dots, .bg-scan { display: none !important; }
 
 .bg-base {
-    background: url('lab-bg.png') center center / cover no-repeat !important;
+    background: url('lab-bg.webp') center center / cover no-repeat !important;
     filter: brightness(1.18) saturate(1.05) contrast(0.98);
     transform-origin: center;
     animation: bg-kenburns 44s ease-in-out infinite alternate;
