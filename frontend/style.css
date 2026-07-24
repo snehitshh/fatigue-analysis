@@ -2672,6 +2672,25 @@ body.test-mode .bg-base { background: #ffffff !important; }
 body.test-mode #session-container { background: #ffffff !important; box-shadow: 0 10px 30px rgba(30,58,138,0.08) !important; }
 body.test-mode #feature-strip { display: none !important; }
 
+/* KSS/Borg rating screens (.fatigue-rating/.kss-*) were styled for the dark
+   glass theme (near-white text) and never given a light override - on the
+   plain white test-mode background that text was nearly invisible. */
+body.test-mode .fatigue-rating h2 { color: #111827; }
+body.test-mode .rating-instruction { color: #4b5563; }
+body.test-mode .rating-context { color: #2563eb; }
+body.test-mode .kss-option {
+    background: #f9fafb;
+    border-color: #e5e7eb;
+    color: #1f2937;
+}
+body.test-mode .kss-option:hover { background: #eff6ff; border-color: #93c5fd; }
+body.test-mode .kss-option:has(input:checked) {
+    background: #eff6ff;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+body.test-mode .kss-number { color: #2563eb; }
+
 /* Respect reduced motion */
 @media (prefers-reduced-motion: reduce) {
     .bg-hex, .bg-dots, .bg-aurora::before, .bg-aurora::after { animation: none !important; }
