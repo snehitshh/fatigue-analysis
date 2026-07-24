@@ -53,7 +53,7 @@ function mountScrollTest(container, onComplete, blockIdx, participantId, options
     function showInstructions() {
         container.innerHTML = `
             <div class="scroll-test-container">
-                <h2 class="block-title">Scrolling Attention Test - ${label}</h2>
+                <div class="block-title">Scrolling Attention Test - ${label}</div>
                 <p>Numbers will scroll past continuously. Tap the button below for every number -
                    <strong>except when you see "${NO_GO_DIGIT}"</strong>. Skip the tap only for "${NO_GO_DIGIT}".</p>
                 <p><strong>A short practice round comes first.</strong></p>
